@@ -129,12 +129,12 @@ def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., 
 	#
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-	if Win == None:
+	if Win is None:
 		Win  = Win_scale*2*(numpy.random.rand(N_res, p_max) - 0.5)
 	else:
 		assert N_res == Win.shape[0], "Warning: N_res != Win.shape[0]. Change N_res to match Win.shape[0]"
 
-	if bias_constant == None:
+	if bias_constant is None:
 		if multi_bias == True:
 			bias_constant = 2*(numpy.random.rand(N_res).reshape(-1, 1) - 0.5)
 		else:
@@ -143,7 +143,7 @@ def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., 
 		if multi_bias == True:
 			assert N_res == bias_constant.shape[0], "Warning: N_res != bias_constant.shape[0]. Change N_res to match bias_constant.shape[0]."
 
-	if W == None:
+	if W is None:
 		# mean_degree = 3
 		mean_degree = 10
 		p_erdosrenyi = mean_degree/float(N_res)
