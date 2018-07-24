@@ -189,8 +189,6 @@ def simulate_from_esn_umd_sparse(N_sim, X, Y, err_esn, Win, W, Wout, bias_consta
 		if nn_number == None:
 			nn_number = int(numpy.power(X_knn.shape[0], 4./(X_knn.shape[1] + 1 + 4)))
 
-			print('Using nn_number = {}'.format(nn_number))
-
 		knn = neighbors.NearestNeighbors(nn_number, algorithm = 'kd_tree', p = 2.)
 
 		knn_out = knn.fit(X_knn)
