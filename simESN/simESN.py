@@ -122,29 +122,39 @@ def learn_esn(x, N_res = 400, rho = 0.99, alpha = 0.1):
 
 	return x_esn, X, Y, err_esn, Win, W, Wout, bias_constant
 
-def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False):
+def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, Win = None, bias_constant = None, W = None):
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
 	# Set up data structures for the echo state network.
 	#
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+	if Win == None:
+		Win  = Win_scale*2*(numpy.random.rand(N_res, p_max) - 0.5)
+	else:
+		assert N_res == Win.shape[0], "Warning: N_res != Win.shape[0]. Change N_res to match Win.shape[0]"
+
+	if bias_constant == None:
+		if multi_bias == True:
+			bias_constant = 2*(numpy.random.rand(N_res).reshape(-1, 1) - 0.5)
+		else:
+			bias_constant = 2*(numpy.random.rand(1) - 0.5)
+	else:
+		if multi_bias == True:
+			assert N_res == bias_constant.shape[0], "Warning: N_res != bias_constant.shape[0]. Change N_res to match bias_constant.shape[0]."
+
+	if W == None:
+		# mean_degree = 3
+		mean_degree = 10
+		p_erdosrenyi = mean_degree/float(N_res)
+
+		W = scipy.sparse.random(m = N_res, n = N_res, density = p_erdosrenyi, data_rvs = scipy.stats.uniform(loc = -0.5, scale = 1).rvs)
+	else:
+		assert N_res == W.shape[0], "Warning: N_res != W.shape[0]. Change N_res to match W.shape[0]."
+
 	X = numpy.matrix(sidpy.embed_ts(x, p_max = p_max).T)
 
 	Y = numpy.matrix(numpy.random.rand(N_res, X.shape[1]))
-
-	Win  = Win_scale*2*(numpy.random.rand(N_res, p_max) - 0.5)
-
-	if multi_bias == True:
-		bias_constant = 2*(numpy.random.rand(N_res).reshape(-1, 1) - 0.5)
-	else:
-		bias_constant = 2*(numpy.random.rand(1) - 0.5)
-
-	# mean_degree = 3
-	mean_degree = 10
-	p_erdosrenyi = mean_degree/float(N_res)
-
-	W = scipy.sparse.random(m = N_res, n = N_res, density = p_erdosrenyi, data_rvs = scipy.stats.uniform(loc = -0.5, scale = 1).rvs)
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
