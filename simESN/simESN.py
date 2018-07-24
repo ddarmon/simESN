@@ -122,103 +122,6 @@ def learn_esn(x, N_res = 400, rho = 0.99, alpha = 0.1):
 
 	return x_esn, X, Y, err_esn, Win, W, Wout, bias_constant
 
-# This version allows for p_max >= 1, which is *not* the general definition
-# of the ESN.
-def simulate_from_esn_old(N_sim, X, Y, err_esn, Win, W, Wout, bias_constant, p_max = 1, print_iter = False):
-	N_res = Y.shape[0]
-
-	J = numpy.random.randint(1, X.shape[1])
-
-	x_esn_sim = numpy.zeros(N_sim)
-	x_esn_sim[:p_max] = X[:-1, J].T
-
-	Y_sim = numpy.matrix(numpy.zeros((N_res, 1)))
-
-	#### DOUBLE CHECK THIS ####
-	Y_sim = Y[:, J-1]
-
-	####################################################
-	# I am not sure about the indexing here:
-
-	for t in range(p_max, N_sim):
-		if t % 10000 == 0:
-			if print_iter:
-				print("On iterate {} of {}.".format(t + 1, N_sim))
-
-		Y_sim = numpy.tanh(numpy.dot(Win, x_esn_sim[t-p_max:t].reshape(-1, 1)) + numpy.dot(W, Y_sim) + bias_constant)
-
-		x_esn_sim[t] = float(numpy.dot(numpy.row_stack(([1], x_esn_sim[t-p_max:t].reshape(-1, 1), Y_sim)).T, Wout))
-		x_esn_sim[t] += numpy.random.choice(err_esn) # Add noise sampled from the training set noise if assuming a stochastic dynamical system.
-
-	#
-	####################################################
-
-	plt.figure()
-	plt.plot(x_esn_sim[:1000])
-	plt.plot(X[1, :].T)
-	plt.show()
-
-	plt.figure()
-	plt.scatter(x_esn_sim[:-1], x_esn_sim[1:])
-
-	ipdb.set_trace()
-
-	return x_esn_sim
-
-def simulate_from_esn(N_sim, X, Y, err_esn, Win, W, Wout, bias_constant, p_max = 1, print_iter = False):
-	N_res = Y.shape[0]
-
-	Wout = Wout.reshape(-1, 1) # (2 + Nres) x 1
-	W = W.T
-	Win = Win.T
-
-	J = numpy.random.randint(1, X.shape[1])
-
-	x_esn_sim = numpy.zeros(N_sim)
-	x_esn_sim[0] = X[0, J].T
-
-	#### DOUBLE CHECK THIS ####
-	Y_sim = Y[:, J-1].T # 1 x Nres
-
-	####################################################
-	# I am not sure about the indexing here:
-
-	vec_for_mult = numpy.column_stack(([1], x_esn_sim[0].reshape(-1, 1), Y_sim)) # 1 x (2 + Nres)
-
-	# ipdb.set_trace()
-
-	for t in range(p_max, N_sim):
-		if t % 10000 == 0:
-			if print_iter:
-				print("On iterate {} of {}.".format(t + 1, N_sim))
-
-
-		Y_sim = numpy.tanh(Win*x_esn_sim[t-1] + numpy.dot(Y_sim, W) + bias_constant)
-
-		vec_for_mult[0, 1] = x_esn_sim[t-1]
-		vec_for_mult[0, 2:] = Y_sim[0, :]
-
-		x_esn_sim[t] = float(numpy.dot(vec_for_mult, Wout))
-		x_esn_sim[t] += numpy.random.choice(err_esn) # Add noise sampled from the training set noise if assuming a stochastic dynamical system.
-
-		# ipdb.set_trace()
-
-	#
-	####################################################
-
-	# plt.figure()
-	# plt.plot(x_esn_sim[:1000])
-	# plt.plot(X[1, :].T)
-
-	# plt.figure()
-	# plt.scatter(x_esn_sim[:-1], x_esn_sim[1:])
-
-	# plt.show()
-
-	# ipdb.set_trace()
-
-	return x_esn_sim
-
 def learn_esn_umd(x, p_max = 1, N_res = 400, rho = 0.99, alpha = 0.1):
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -383,14 +286,6 @@ def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 	X = numpy.matrix(sidpy.embed_ts(x, p_max = p_max).T)
-
-	# N_res = 100 # 'Works' with slogistic and stent when p_max = 1.
-	# N_res = 150
-	# N_res = 200 # Works with slorenz
-	# N_res = 300
-	# N_res = 400
-	# N_res = 800
-	# N_res = 1000
 
 	Y = numpy.matrix(numpy.random.rand(N_res, X.shape[1]))
 
