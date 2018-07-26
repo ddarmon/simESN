@@ -48,7 +48,8 @@ def simulate_ls(N_sim, x, p_opt, k = None):
 
 def simulate_rap(N_sim, x, p_opt, k = None):
 	if k is None:
-		k = int(numpy.power(x.shape[0] - p_opt, 4./(4 + 1 + p_opt)))+1
+		# k = int(numpy.power(x.shape[0] - p_opt, 4./(4 + 1 + p_opt)))+1
+		k = int(numpy.power(x.shape[0] - p_opt, 2./(2 + 1 + p_opt)))+1
 
 		print("Using k = {}.".format(k))
 
