@@ -3,6 +3,8 @@ import scipy
 import ipdb
 import matplotlib.pyplot as plt
 
+from scipy.special import expit
+
 from sklearn.linear_model import Ridge
 from sklearn import neighbors
 
@@ -192,6 +194,76 @@ def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., 
 	return x_esn, X, Y, err_esn, Win, W, Wout, bias_constant
 
 def learn_esn_hybrid_sparse(x, expert_info, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, Win = None, bias_constant = None, W = None, seed_for_ic = None):
+	"""
+	Predict the future of x using the past of x via an echo state network.
+	We also include a stream of expert information, in this case the logit
+	of the predictive probability provided by an epsilon-machine inferred
+	using x.
+
+	NOTE: expert_info is both used to drive the ESN and as an input to the
+	output layer of the ESN.
+
+	Parameters
+	----------
+	x : numpy.array
+			The time series to use as the input / output of the ESN.
+	expert_info : numpy.array
+			The 'expert information' time series also pass to the
+			ESN.
+	p_max : int
+			The model order used to embed x into X.
+	N_res : int
+			The number of reservoir nodes in the ESN.
+	rho : float
+			The desired spectral radius of the inter-node
+			matrix of the ESN.
+	Win_scale : float
+			The amount to scale the random projections in the input
+			matrix.
+	multi_bias : boolean
+			Whether (True) or not (False) to include node-specific
+			biases.
+	to_plot_regularization : boolean
+			Whether to plot the regression coefficients as a function
+			of the reguarlization parameter of the ridge regression.
+	output_verbose : boolean
+			Whether to print the stages of learning the ESN.
+	Win : numpy.array
+			The input matrix to the ESN. If None, randomly generated
+			using the parameters given previously.
+	bias_constant : numpy.array
+			The bias constant of each reservoir node. If None, generated
+			uniformly on [-1, 1].
+	W : numpy.array
+			The inter-node matrix of the ESN. If None, randomly generated
+			using the parameters given previously.
+	seed_for_ic : int
+			The seed used to initialize the pseudo-random number generator
+			(PRNG) before creating the initial conditions of the reservoir nodes.
+			If None, the state of the PRNG is left as-is.
+
+	Returns
+	-------
+	x_esn : numpy.array
+			The predicted values of x, starting at x[p_max]
+	X : numpy.array
+			The embedded time series, using a lag of p_max.
+	Y : numpy.array
+			The states of the reservoir nodes.
+	Win : numpy.array
+			The input matrix to the ESN.
+	W : numpy.array
+			The inter-node matrix of the ESN.
+	Wout : numpy.array
+			The learned output matrix.
+			Note: This includes the intercept term as the first
+			entry.
+	bias_constant : numpy.array
+			The bias constant of each reservoir node.
+
+
+	"""
+
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -199,10 +271,17 @@ def learn_esn_hybrid_sparse(x, expert_info, p_max = 1, N_res = 400, rho = 0.99, 
 	#
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+	# Generate each entry of Win independently and uniformly
+	# on [-Win_scale, Win_scale]:
+
 	if Win is None:
 		Win  = Win_scale*2*(numpy.random.rand(N_res, p_max+1) - 0.5)
 	else:
 		assert N_res == Win.shape[0], "Warning: N_res != Win.shape[0]. Change N_res to match Win.shape[0]"
+
+
+	# Generate each bias term independently and uniformly
+	# on [-1, 1]:
 
 	if bias_constant is None:
 		if multi_bias == True:
@@ -213,6 +292,9 @@ def learn_esn_hybrid_sparse(x, expert_info, p_max = 1, N_res = 400, rho = 0.99, 
 		if multi_bias == True:
 			assert N_res == bias_constant.shape[0], "Warning: N_res != bias_constant.shape[0]. Change N_res to match bias_constant.shape[0]."
 
+	# Generate the inter-node weight matrix as an Erdos-Renyi random graph with 
+	# average degree mean_degree, and weights uniform on [-1/2, 1/2]
+
 	if W is None:
 		# mean_degree = 3
 		mean_degree = 10
@@ -222,13 +304,21 @@ def learn_esn_hybrid_sparse(x, expert_info, p_max = 1, N_res = 400, rho = 0.99, 
 	else:
 		assert N_res == W.shape[0], "Warning: N_res != W.shape[0]. Change N_res to match W.shape[0]."
 
+	# Embed both x and the expert_info into a (T - p_max, p_max + 1) matrix
+	# suitable to use as a data matrix for the regression.
+
 	X = numpy.matrix(sidpy.embed_ts(x, p_max = p_max).T)
 
 	E = numpy.matrix(sidpy.embed_ts(expert_info, p_max = p_max).T)
 
+	# Add the expert info to X to act as a direct input to the ESN.
+
 	X_w_expert = numpy.row_stack((E[-1, :], X))
 
 	X = X_w_expert
+
+	# Allow for fixing the seed for generating the initial
+	# conditions of the reservoir nodes.
 
 	if seed_for_ic is not None:
 		rng_state = numpy.random.get_state()
@@ -244,12 +334,16 @@ def learn_esn_hybrid_sparse(x, expert_info, p_max = 1, N_res = 400, rho = 0.99, 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
 	# Normalize W so it has condition number of rho:
+	# 
+	# NOTE: This is a 
 	#
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 	s = scipy.sparse.linalg.svds(W, k=1)
 
 	W = W.multiply(numpy.abs(rho/float(s[1])))
+
+	# Run the Echo State Network using X as the input.
 
 	if output_verbose:
 		print("Running ESN with time series as input:")
@@ -262,7 +356,21 @@ def learn_esn_hybrid_sparse(x, expert_info, p_max = 1, N_res = 400, rho = 0.99, 
 
 		print("Estimating output weights:")
 
-	Wout, x_esn, err_esn = estimate_ridge_regression_w_splithalf_cv(X.T, Y.T, to_plot = to_plot_regularization)
+	# Harvest the reservoir states and use them for prediction.
+
+	# Remember: we are explicitly stacking on the expert info into the Y matrix, so that we
+	# can explicitly learn whether we should just use the expert info, just use the reservoir
+	# state info, or use some combination of the two.
+
+	# We will stack on the expert info as *probabilities*, rather than *logit probabilities*,
+	# to deal with +/- infinities that can occur when p = 0 or 1.
+
+	Wout, x_esn, err_esn = estimate_ridge_regression_w_splithalf_cv(X.T, numpy.row_stack((Y, expit(E[-1, :]))).T, to_plot = to_plot_regularization)
+
+	# This is what I originally had, where I did *not* explicit include the expert info in the
+	# output layer:
+
+	# Wout, x_esn, err_esn = estimate_ridge_regression_w_splithalf_cv(X.T, Y.T, to_plot = to_plot_regularization)
 
 	return x_esn, X, Y, err_esn, Win, W, Wout, bias_constant
 
@@ -435,6 +543,32 @@ def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W
 	return z_esn_sim[0, :], z_esn_sim[1, :]
 
 def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False):
+	"""
+	Estimate the coefficients of a linear model X = f(Y) using split-half cross-validated ridge regression.
+
+	In this case, X_ridge is the state of the dynamical system stacked into a data matrix, and Y is the
+	reservoir states.
+
+	Parameters
+	----------
+	var1 : type
+			description
+
+	Returns
+	-------
+	var1 : type
+			description
+
+	Notes
+	-----
+	Any notes go here.
+
+	Examples
+	--------
+	>>> import module_name
+	>>> # Demonstrate code here.
+
+	"""
 	N_res = Y_ridge.shape[1]
 
 	N_train = X_ridge.shape[0]//2
