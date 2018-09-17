@@ -122,7 +122,8 @@ def learn_esn(x, N_res = 400, rho = 0.99, alpha = 0.1):
 
 	return x_esn, X, Y, err_esn, Win, W, Wout, bias_constant
 
-def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, Win = None, bias_constant = None, W = None):
+def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, Win = None, bias_constant = None, W = None, seed_for_ic = None):
+
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
 	# Set up data structures for the echo state network.
@@ -154,7 +155,91 @@ def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., 
 
 	X = numpy.matrix(sidpy.embed_ts(x, p_max = p_max).T)
 
-	Y = numpy.matrix(numpy.random.rand(N_res, X.shape[1]))
+	if seed_for_ic is not None:
+		rng_state = numpy.random.get_state()
+
+		numpy.random.seed(seed_for_ic)
+
+		Y = numpy.matrix(numpy.random.rand(N_res, X.shape[1]))
+
+		numpy.random.set_state(rng_state)
+	else:
+		Y = numpy.matrix(numpy.random.rand(N_res, X.shape[1]))
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Normalize W so it has condition number of rho:
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	s = scipy.sparse.linalg.svds(W, k=1)
+
+	W = W.multiply(numpy.abs(rho/float(s[1])))
+
+	if output_verbose:
+		print("Running ESN with time series as input:")
+
+	for t in range(1, X.shape[1]):
+		Y[:, t] = numpy.tanh(numpy.dot(Win, X[:-1, t]) + W.dot(Y[:, t-1]) + bias_constant)
+
+	if output_verbose:
+		print("Done running ESN with time series as input:")
+
+		print("Estimating output weights:")
+
+	Wout, x_esn, err_esn = estimate_ridge_regression_w_splithalf_cv(X.T, Y.T, to_plot = to_plot_regularization)
+
+	return x_esn, X, Y, err_esn, Win, W, Wout, bias_constant
+
+def learn_esn_hybrid_sparse(x, expert_info, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, Win = None, bias_constant = None, W = None, seed_for_ic = None):
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Set up data structures for the echo state network.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	if Win is None:
+		Win  = Win_scale*2*(numpy.random.rand(N_res, p_max+1) - 0.5)
+	else:
+		assert N_res == Win.shape[0], "Warning: N_res != Win.shape[0]. Change N_res to match Win.shape[0]"
+
+	if bias_constant is None:
+		if multi_bias == True:
+			bias_constant = 2*(numpy.random.rand(N_res).reshape(-1, 1) - 0.5)
+		else:
+			bias_constant = 2*(numpy.random.rand(1) - 0.5)
+	else:
+		if multi_bias == True:
+			assert N_res == bias_constant.shape[0], "Warning: N_res != bias_constant.shape[0]. Change N_res to match bias_constant.shape[0]."
+
+	if W is None:
+		# mean_degree = 3
+		mean_degree = 10
+		p_erdosrenyi = mean_degree/float(N_res)
+
+		W = scipy.sparse.random(m = N_res, n = N_res, density = p_erdosrenyi, data_rvs = scipy.stats.uniform(loc = -0.5, scale = 1).rvs)
+	else:
+		assert N_res == W.shape[0], "Warning: N_res != W.shape[0]. Change N_res to match W.shape[0]."
+
+	X = numpy.matrix(sidpy.embed_ts(x, p_max = p_max).T)
+
+	E = numpy.matrix(sidpy.embed_ts(expert_info, p_max = p_max).T)
+
+	X_w_expert = numpy.row_stack((E[-1, :], X))
+
+	X = X_w_expert
+
+	if seed_for_ic is not None:
+		rng_state = numpy.random.get_state()
+
+		numpy.random.seed(seed_for_ic)
+
+		Y = numpy.matrix(numpy.random.rand(N_res, X.shape[1]))
+
+		numpy.random.set_state(rng_state)
+	else:
+		Y = numpy.matrix(numpy.random.rand(N_res, X.shape[1]))
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
