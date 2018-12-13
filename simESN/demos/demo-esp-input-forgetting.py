@@ -19,11 +19,11 @@ username = getpass.getuser()
 
 import sys
 
-sys.path.append('/Users/{}/Documents/Reference/G/github/sidpy/sidpy'.format(username))
+sys.path.append('../../../sidpy/sidpy'.format(username))
 
 sys.path.append('../')
 
-sys.path.append('/Users/{}/Documents/Reference/G/github/simESN/simESN'.format(username))
+sys.path.append('../simESN'.format(username))
 
 import simESN
 
