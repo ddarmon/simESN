@@ -20,20 +20,13 @@ import sys
 
 platform = sys.platform
 
-if platform == 'linux2':
-	github_location = '/mnt/c/Users/ddarmon/Documents/github'
-else:
-	github_location = '/Users/{}/Documents/Reference/G/github'.format(username)
-	
-sys.path.append('{}/sidpy/sidpy'.format(github_location))
-
-import sidpy
-
-sys.path.append('{}/simESN/simESN'.format(github_location))
-
-import simESN
+sys.path.append('../../../sidpy/sidpy'.format(username))
 
 sys.path.append('../')
+
+sys.path.append('../simESN'.format(username))
+
+import simESN
 
 import sidpy
 import load_models
