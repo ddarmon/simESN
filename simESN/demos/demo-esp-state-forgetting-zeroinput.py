@@ -4,11 +4,11 @@ import ipdb
 import matplotlib.pyplot as plt
 plt.ion()
 
-from matplotlib import rc
-plt.rc('text', usetex=True)
-plt.rc('font', family='serif')
-plt.rc('font', size=14)
-plt.rc('figure', figsize=[10,5])
+# from matplotlib import rc
+# plt.rc('text', usetex=True)
+# plt.rc('font', family='serif')
+# plt.rc('font', size=14)
+# plt.rc('figure', figsize=[10,5])
 
 from sklearn.linear_model import Ridge
 
