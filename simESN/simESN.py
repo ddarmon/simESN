@@ -174,7 +174,7 @@ def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., 
 	#
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-	ipdb.set_trace()
+	# ipdb.set_trace()
 
 	if renormalize_by == 'svd': # Normalize by the largest singular value of W.
 		s = scipy.sparse.linalg.svds(W, k=1)
