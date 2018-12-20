@@ -124,7 +124,7 @@ def learn_esn(x, N_res = 400, rho = 0.99, alpha = 0.1):
 
 	return x_esn, X, Y, err_esn, Win, W, Wout, bias_constant
 
-def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, Win = None, bias_constant = None, W = None, seed_for_ic = None):
+def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, Win = None, bias_constant = None, W = None, seed_for_ic = None, renormalize_by = 'svd'):
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -174,9 +174,16 @@ def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., 
 	#
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-	s = scipy.sparse.linalg.svds(W, k=1)
+	ipdb.set_trace()
 
-	W = W.multiply(numpy.abs(rho/float(s[1])))
+	if renormalize_by == 'svd': # Normalize by the largest singular value of W.
+		s = scipy.sparse.linalg.svds(W, k=1)
+
+		W = W.multiply(numpy.abs(rho/float(s[1])))
+	elif renormalize_by == 'eigen': # Normalize by the spectral radius of the W.
+		lam = scipy.sparse.linalg.eigs(W, k=1)
+
+		W = W.multiply(numpy.abs(rho/float(numpy.abs(lam[0]))))
 
 	if output_verbose:
 		print("Running ESN with time series as input:")
