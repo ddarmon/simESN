@@ -14,19 +14,12 @@ from sklearn.linear_model import Ridge
 
 import getpass
 
-username = getpass.getuser()
-
 import sys
-
-sys.path.append('../../../sidpy/sidpy'.format(username))
 
 sys.path.append('../')
 
-sys.path.append('../simESN'.format(username))
-
 import simESN
 
-import sidpy
 import load_models
 
 import scipy
@@ -159,11 +152,7 @@ rho = 0.99 # Has ESP.
 Win_scale = 1.
 # Win_scale = 100.
 
-# p_opt, nlpl_opt, nlpl_by_p, er_knn, ler_knn = sidpy.choose_model_order_nlpl(x, p_max_ms, pow_upperbound=pow_upperbound, marginal_estimation_procedure=marginal_estimation_procedure, nn_package='sklearn', is_multirealization=False, announce_stages=False, output_verbose=True, suppress_warning=False)
-# p_opt, nlpl_opt, nlpl_by_p, er_knn = sidpy.choose_model_order_mse(x, p_max_ms, pow_upperbound=pow_upperbound, nn_package='sklearn', is_multirealization=False, announce_stages=False, output_verbose=True)
-
 p_opt = 4
-# p_max = p_opt
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #

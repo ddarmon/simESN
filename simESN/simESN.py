@@ -1,6 +1,5 @@
 import numpy
 import scipy
-import ipdb
 import matplotlib.pyplot as plt
 
 from scipy.special import expit
@@ -8,13 +7,7 @@ from scipy.special import expit
 from sklearn.linear_model import Ridge
 from sklearn import neighbors
 
-import getpass
-
-username = getpass.getuser()
-
 import sys
-
-sys.path.append('/Users/{}/Documents/Reference/G/github/sidpy/sidpy'.format(username))
 
 import sidpy
 
