@@ -16,7 +16,7 @@ def simulate_ls(N_sim, x, p_opt, k = None):
 	if k is None:
 		k = int(numpy.power(x.shape[0], 0.5)) # Suggested in Lall-Sharma paper.
 
-		print("Using k = {}.".format(k))
+		# print("Using k = {}.".format(k))
 
 	N = x.shape[0]
 
@@ -51,7 +51,7 @@ def simulate_rap(N_sim, x, p_opt, k = None):
 		# k = int(numpy.power(x.shape[0] - p_opt, 4./(4 + 1 + p_opt)))+1
 		k = int(numpy.power(x.shape[0] - p_opt, 2./(2 + 1 + p_opt)))+1
 
-		print("Using k = {}.".format(k))
+		# print("Using k = {}.".format(k))
 
 	N = x.shape[0]
 
