@@ -121,8 +121,8 @@ def learn_esn_umd_sparse(x, p_max = 1, N_res = 400, rho = 0.99, Win_scale = 1., 
 	"""
 	Generate an echo state network (ESN) using the ESN architecture from:
 
-	J. Pathak, Z. Lu, B. R. Hunt, M. Girvan, and E. Ott, “Using machine learning to replicate
-	chaotic attractors and calculate lyapunov exponents from data,”
+	J. Pathak, Z. Lu, B. R. Hunt, M. Girvan, and E. Ott, "Using machine learning to replicate
+	chaotic attractors and calculate lyapunov exponents from data,"
 	Chaos: An Interdisciplinary Journal of Nonlinear Science 27, 121102 (2017).
 	
 	drive the ESN using the time series x, and estimate the output weights mapping
@@ -481,48 +481,128 @@ def learn_esn_hybrid_sparse(x, expert_info, p_max = 1, N_res = 400, rho = 0.99, 
 
 	return x_esn, X, Y, err_esn, Win, W, Wout, bias_constant
 
-def simulate_from_esn_umd_sparse(N_sim, X, Y, err_esn, Win, W, Wout, bias_constant, p_max = 1, is_stochastic = True, knn_errs = False, nn_number = None, print_iter = False):
+def simulate_from_esn_umd_sparse(N_sim, X, Y, err_esn, Win, W, Wout, bias_constant, p_max = None, is_stochastic = True, knn_errs = False, nn_number = None, print_iter = False):
+	"""
+	Simulate from an ESN with parameters Win, W, Wout, and bias_constant, given
+	a data matrix representation X for a time series x, the corresponding
+	echo state node states Y when the ESN is driven by X, and the estimated
+	residuals err_esn.
+
+	Parameters
+	----------
+	N_sim : int
+			The length of simulated time series.
+	X : numpy.array
+			The data matrix representation of x used to drive
+			the echo state network.
+	Y : numpy.array
+			The states of nodes of the the echo state network.
+			Y[i, t] corresponds to the state of the i-th node
+			at the t-th time point.
+	err_esn : numpy.array
+			The error between the next-step future and the 
+			predicted next-step future.
+	Win : numpy.array
+			The input-weight matrix.
+	W : numpy.array
+			The echo state network weight matrix.
+	Wout : numpy.array
+			The weights estimated for the linear regression
+			of the next-step future on the state of the
+			echo state nodes.
+	bias_constant : numpy.array
+			The bias constant matrix.
+	p_max : int
+			This should generally be left as None. It is 
+			determined by the shape of X, since X is the
+			data matrix embedding x using lag p.
+	is_stochastic : boolean
+			Determines whether the simulator should be
+			treated as a stochastic dynamical system or
+			a deterministic dynamical system.
+
+			If is_stochastic == True, then the residuals
+			err_esn are used as dynamical noise.
+
+	knn_errs : boolean
+			Whether the residuals should be resampled based
+			on the most-recent state of the dynamical system
+			(True), or by sampling with replacement from
+			err_esn.
+
+	nn_number : int
+			The number of nearest neighbors used when
+			knn_errs is true.
+	print_iter : boolean
+			Whether to print the current iteration number of
+			the simulator.
+
+
+	Returns
+	-------
+	x_esn_sim : numpy.array
+			The simulation from the echo state network.
+
+	Notes
+	-----
+	Any notes go here.
+
+	Examples
+	--------
+	>>> import module_name
+	>>> # Demonstrate code here.
+
+	"""
+
+	if p_max is None: # p_max is a legacy parameter that should have been fixed by X's shape.
+		p_max = X.shape[0] - 1
 
 	if knn_errs == True:
 		X_knn = X.T[:, :-1]
 
-		if nn_number == None:
+		if nn_number == None: # Use a rule-of-thumb to set the number of nearest neighbors, if not pre-specified.
 			nn_number = int(numpy.power(X_knn.shape[0], 4./(X_knn.shape[1] + 1 + 4)))
 
 		knn = neighbors.NearestNeighbors(nn_number, algorithm = 'kd_tree', p = 2.)
 
 		knn_out = knn.fit(X_knn)
 
-	N_res = Y.shape[0]
-
 	Wout = Wout.reshape(-1, 1) # (2 + Nres) x 1
 
 	J = numpy.random.randint(1, X.shape[1])
 
 	x_esn_sim = numpy.zeros(N_sim)
-	# x_esn_sim[:p_max] = X[J, :-1]
+
+	# Initialize the simulation series with a segment
+	# from the original time series.
+
 	x_esn_sim[:p_max] = numpy.ravel(X[:-1, J])
 
-	#### DOUBLE CHECK THIS ####
 	Y_sim = Y[:, J] # 1 x Nres
 
-	####################################################
-	# I am not sure about the indexing here:
+	# vec_for_mult appends the intercept to current
+	# state vector for the echo state nodes.
 
-	vec_for_mult = numpy.column_stack(([1], Y_sim.T)) # 1 x (2 + Nres)
-
-	# ipdb.set_trace()
+	vec_for_mult = numpy.column_stack(([1], Y_sim.T)) # 1 x (1 + Nres)
 
 	for t in range(p_max, N_sim):
 		if t % 10000 == 0:
 			if print_iter:
 				print("On iterate {} of {}.".format(t + 1, N_sim))
 
+		# Update the ESN state.
+
 		Y_sim = numpy.tanh(numpy.dot(Win, x_esn_sim[t-p_max:t].reshape(-1, 1)) + W.dot(Y_sim) + bias_constant)
+
+		# Update the vector for multiplication.
 
 		vec_for_mult[0, 1:] = Y_sim[:, 0].T
 
 		x_esn_sim[t] = float(numpy.dot(vec_for_mult, Wout))
+
+		# Add dynamical noise to the simulated series, if it
+		# is desirable to simulate from a stochastic dynamical system.
+
 		if is_stochastic:
 			if knn_errs == True:
 				distances, neighbor_inds = knn_out.kneighbors(x_esn_sim[t-p_max:t].reshape(1, -1))
@@ -530,12 +610,8 @@ def simulate_from_esn_umd_sparse(N_sim, X, Y, err_esn, Win, W, Wout, bias_consta
 				err_term = err_esn[numpy.random.choice(numpy.ravel(neighbor_inds), size = 1)]
 			else:
 				err_term = numpy.random.choice(err_esn, size = 1)
+
 			x_esn_sim[t] += err_term # Add noise sampled from the training set noise if assuming a stochastic dynamical system.
-
-	# ipdb.set_trace()
-
-	#
-	####################################################
 
 	return x_esn_sim
 
