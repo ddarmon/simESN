@@ -92,3 +92,21 @@ def simulate_rap(N_sim, x, p_opt, k = None):
 		x_boot[t + p_opt] = x_boot[t + p_opt - 1] + delta_resid
 
 	return x_boot
+
+def simulate_block_bootstrap(N_sim, x, k = None):
+	n = x.shape[0]
+
+	if k is None:
+		k = int(numpy.ceil(numpy.power(n, 1./3)))
+
+	X = sidpy.embed_ts(x, k - 1)
+
+	num_blocks_needed = int(numpy.ceil(N_sim/float(k)))
+
+	row_inds = numpy.random.choice(X.shape[0], size = num_blocks_needed, replace = True)
+
+	X_bs = X[row_inds, :]
+
+	x_boot = X_bs.ravel(order = 'C')[:N_sim]
+
+	return x_boot
