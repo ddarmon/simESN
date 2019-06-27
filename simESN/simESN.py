@@ -829,7 +829,11 @@ def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W
 
 	return z_esn_sim[0, :], z_esn_sim[1, :]
 
-def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False):
+# This version is not (?) handling the intercept correctly when doing ridge regression, since the
+# way I have implemented it requires that the data matrix be column-standardized (i.e. means
+# down columns should equal 0.)
+
+def estimate_ridge_regression_w_splithalf_cv_old(X_ridge, Y_ridge, to_plot = False, is_verbose = False):
 	"""
 	Estimate the coefficients of a linear model X = f(Y) using split-half cross-validated ridge regression.
 
@@ -860,9 +864,6 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 
 	N_train = X_ridge.shape[0]//2
 
-	# Y_ridge = Y_ridge - Y_ridge.mean(0)
-	# X_ridge = X_ridge - X_ridge.mean(0) # This step is questionable
-
 	X_ridge_train = X_ridge[:N_train, :]
 	Y_ridge_train = Y_ridge[:N_train, :]
 
@@ -879,10 +880,6 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	# Minor annoyance here: in a standard regression of
 	# y ~ x, y = X and x = Y, based on how I named the
 	# system state X and the ESN states Y.
-
-	# import ipdb
-
-	# ipdb.set_trace()
 
 	beta0 = X_ridge_train[:, -1].mean()
 
@@ -930,6 +927,123 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	S = numpy.dot(Y_ridge.T, Y_ridge)
 
 	Ytx = numpy.dot(Y_ridge.T, X_ridge[:, -1])
+
+	beta = numpy.ravel(numpy.linalg.solve(S + lam_min*I, Ytx))
+
+	beta0 = X_ridge[:, -1].mean()
+
+	if is_verbose:
+		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
+
+	beta0 = beta0 - numpy.sum(beta*numpy.ravel(Y_ridge.mean(0)))
+
+	if is_verbose:
+		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
+
+	Wout_cv = numpy.concatenate(([beta0], beta))
+
+	x_esn = numpy.ravel(numpy.dot(Y_ridge, beta) + beta0)
+	err_esn = numpy.ravel(X_ridge[:, -1]) - x_esn
+
+	return Wout_cv, x_esn, err_esn
+
+def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False):
+	"""
+	Estimate the coefficients of a linear model X = f(Y) using split-half cross-validated ridge regression.
+
+	In this case, X_ridge is the state of the dynamical system stacked into a data matrix, and Y is the
+	reservoir states.
+
+	Parameters
+	----------
+	var1 : type
+			description
+
+	Returns
+	-------
+	var1 : type
+			description
+
+	Notes
+	-----
+	Any notes go here.
+
+	Examples
+	--------
+	>>> import module_name
+	>>> # Demonstrate code here.
+
+	"""
+	N_res = Y_ridge.shape[1]
+
+	N_train = X_ridge.shape[0]//2
+
+	X_ridge_train = X_ridge[:N_train, :]
+	Y_ridge_train = Y_ridge[:N_train, :]
+
+	Ys_ridge = Y_ridge.copy() - Y_ridge.mean(0)
+	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train.mean(0)
+
+	X_ridge_test = X_ridge[N_train:, :]
+	Y_ridge_test = Y_ridge[N_train:, :]
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Choose appropriate regularization parameter using 
+	# split-half  cross-validation.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	# Minor annoyance here: in a standard regression of
+	# y ~ x, y = X and x = Y, based on how I named the
+	# system state X and the ESN states Y.
+
+	beta0 = X_ridge_train[:, -1].mean()
+
+	S = numpy.dot(Ys_ridge_train.T, Ys_ridge_train)
+
+	Ytx = numpy.dot(Ys_ridge_train.T, X_ridge_train[:, -1])
+
+	lams = numpy.logspace(-4, 5, 50)
+
+	beta_by_lams = numpy.zeros((N_res, len(lams)))
+	err_by_lams = numpy.zeros(len(lams))
+
+	I = numpy.identity(N_res)
+
+	for lam_ind, lam in enumerate(lams):
+		if is_verbose:
+			print("On lam_ind = {} of {}...".format(lam_ind + 1, len(lams)))
+
+		beta = numpy.linalg.solve(S + lam*I, Ytx)
+		beta_by_lams[:, lam_ind] = numpy.ravel(beta)
+
+		Xhat = numpy.dot(Y_ridge_test, beta)
+
+		err_by_lams[lam_ind] = numpy.mean(numpy.power(X_ridge_test[:, -1] - (beta0 + Xhat), 2))
+
+	lam_argmin = numpy.argmin(err_by_lams)
+	lam_min = lams[lam_argmin]
+
+	if to_plot:
+		plt.figure()
+		plt.plot(lams, err_by_lams)
+		plt.xscale('log')
+
+		plt.axvline(lam_min, color = 'red')
+
+	if is_verbose:
+		print("Split-half CV chose lambda = {}".format(lam_min))
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Recompute beta using full time series:
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	S = numpy.dot(Ys_ridge.T, Ys_ridge)
+
+	Ytx = numpy.dot(Ys_ridge.T, X_ridge[:, -1])
 
 	beta = numpy.ravel(numpy.linalg.solve(S + lam_min*I, Ytx))
 
