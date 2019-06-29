@@ -981,11 +981,11 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	X_ridge_train = X_ridge[:N_train, :]
 	Y_ridge_train = Y_ridge[:N_train, :]
 
-	Ys_ridge = Y_ridge.copy() - Y_ridge.mean(0)
-	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train.mean(0)
-
 	X_ridge_test = X_ridge[N_train:, :]
 	Y_ridge_test = Y_ridge[N_train:, :]
+
+	Ys_ridge = Y_ridge.copy() - Y_ridge.mean(0)
+	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train.mean(0)
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -1004,7 +1004,8 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 
 	Ytx = numpy.dot(Ys_ridge_train.T, X_ridge_train[:, -1])
 
-	lams = numpy.logspace(-4, 5, 50)
+	# lams = numpy.logspace(-4, 5, 50)
+	lams = numpy.logspace(-4, 10, 50)
 
 	beta_by_lams = numpy.zeros((N_res, len(lams)))
 	err_by_lams = numpy.zeros(len(lams))
