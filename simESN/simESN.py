@@ -614,7 +614,7 @@ def simulate_from_esn_umd_sparse(N_sim, X, Y, err_esn, Win, W, Wout, bias_consta
 
 	return x_esn_sim
 
-def learn_io_esn_umd_sparse(y, x, qp_opt = (1, 1), N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, renormalize_by = 'svd'):
+def learn_io_esn_umd_sparse(y, x, qp_opt = (1, 1), N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, renormalize_by = 'svd', return_regularization_path = False):
 	"""
 	learn_io_esn_umd_sparse is for modeling an input-output system y -> x, where
 	each of x and y are univariate time series.
@@ -785,9 +785,13 @@ def learn_io_esn_umd_sparse(y, x, qp_opt = (1, 1), N_res = 400, rho = 0.99, Win_
 
 	target = numpy.row_stack((Y[-1, :], X[-1, :])).T
 
-	Wout, y_esn, x_esn, err_esn_y, err_esn_x = estimate_ridge_regression_joint_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization)
+	if return_regularization_path:
+		Wout, y_esn, x_esn, err_esn_y, err_esn_x, lams, beta_by_lams, lam_min = estimate_ridge_regression_joint_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
 
-	return y_esn, x_esn, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant
+		return y_esn, x_esn, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant, lams, beta_by_lams, lam_min
+	else:
+		Wout, y_esn, x_esn, err_esn_y, err_esn_x = estimate_ridge_regression_joint_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
+		return y_esn, x_esn, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant
 
 def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant, qp_opt = None, is_stochastic = True, print_iter = False):
 
@@ -947,7 +951,7 @@ def estimate_ridge_regression_w_splithalf_cv_old(X_ridge, Y_ridge, to_plot = Fal
 
 	return Wout_cv, x_esn, err_esn
 
-def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False):
+def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False, return_regularization_path = False):
 	"""
 	Estimate the coefficients of a linear model X = f(Y) using split-half cross-validated ridge regression.
 
@@ -1063,15 +1067,15 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	x_esn = numpy.ravel(numpy.dot(Y_ridge, beta) + beta0)
 	err_esn = numpy.ravel(X_ridge[:, -1]) - x_esn
 
-	return Wout_cv, x_esn, err_esn
+	if return_regularization_path:
+		return Wout_cv, x_esn, err_esn, lams, beta_by_lams, lam_min
+	else:
+		return Wout_cv, x_esn, err_esn
 
-def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False):
+def estimate_ridge_regression_joint_w_splithalf_cv_old(X_ridge, Y_ridge, to_plot = False, is_verbose = False):
 	N_res = Y_ridge.shape[1]
 
 	N_train = X_ridge.shape[0]//2
-
-	# Y_ridge = Y_ridge - Y_ridge.mean(0)
-	# X_ridge = X_ridge - X_ridge.mean(0) # This step is questionable
 
 	X_ridge_train = X_ridge[:N_train, :]
 	Y_ridge_train = Y_ridge[:N_train, :]
@@ -1155,3 +1159,97 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 	err_esn_x = numpy.ravel(X_ridge[:, 1]) - x_esn
 
 	return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x
+
+def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False, return_regularization_path = False):
+	N_res = Y_ridge.shape[1]
+
+	N_train = X_ridge.shape[0]//2
+
+	X_ridge_train = X_ridge[:N_train, :]
+	Y_ridge_train = Y_ridge[:N_train, :]
+
+	X_ridge_test = X_ridge[N_train:, :]
+	Y_ridge_test = Y_ridge[N_train:, :]
+
+	Ys_ridge = Y_ridge.copy() - Y_ridge.mean(0)
+	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train.mean(0)
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Choose appropriate regularization parameter using 
+	# split-half  cross-validation.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	beta0 = X_ridge_train.mean(0)
+
+	S = numpy.dot(Y_ridge_train.T, Y_ridge_train)
+
+	Ytx = numpy.dot(Y_ridge_train.T, X_ridge_train)
+
+	lams = numpy.logspace(-4, 10, 50)
+
+	beta_by_lams = numpy.zeros((N_res, 2, len(lams)))
+	err_by_lams = numpy.zeros(len(lams))
+
+	I = numpy.identity(N_res)
+
+	for lam_ind, lam in enumerate(lams):
+		if is_verbose:
+			print("On lam_ind = {} of {}...".format(lam_ind + 1, len(lams)))
+
+		beta = numpy.linalg.solve(S + lam*I, Ytx)
+		beta_by_lams[:, :, lam_ind] = beta
+
+		Xhat = numpy.dot(Y_ridge_test, beta)
+
+		err_by_lams[lam_ind] = numpy.mean(numpy.power(X_ridge_test - (beta0 + Xhat), 2))
+
+	lam_argmin = numpy.argmin(err_by_lams)
+	lam_min = lams[lam_argmin]
+
+	if to_plot:
+		plt.figure()
+		plt.plot(lams, err_by_lams)
+		plt.xscale('log')
+
+		plt.axvline(lam_min, color = 'red')
+
+	if is_verbose:
+		print("Split-half CV chose lambda = {}".format(lam_min))
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Recompute beta using full time series:
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	S = numpy.dot(Y_ridge.T, Y_ridge)
+
+	Ytx = numpy.dot(Y_ridge.T, X_ridge)
+
+	beta = numpy.linalg.solve(S + lam_min*I, Ytx)
+
+	beta0 = X_ridge.mean(0)
+
+	if is_verbose:
+		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
+
+	beta0 = beta0 - numpy.dot(Y_ridge.mean(0), beta)
+
+	if is_verbose:
+		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
+
+	Wout_cv = numpy.row_stack((beta0, beta))
+
+	z_esn = numpy.dot(Y_ridge, beta) + beta0
+
+	y_esn = numpy.ravel(z_esn[:, 0])
+	x_esn = numpy.ravel(z_esn[:, 1])
+	err_esn_y = numpy.ravel(X_ridge[:, 0]) - y_esn
+	err_esn_x = numpy.ravel(X_ridge[:, 1]) - x_esn
+
+	if return_regularization_path:
+		return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x, lams, beta_by_lams, lam_min
+	else:
+		return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x
