@@ -988,8 +988,11 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	X_ridge_test = X_ridge[N_train:, :]
 	Y_ridge_test = Y_ridge[N_train:, :]
 
-	Ys_ridge = Y_ridge.copy() - Y_ridge.mean(0)
-	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train.mean(0)
+	Y_ridge_mean = Y_ridge.mean(0)
+	Y_ridge_train_mean = Y_ridge_train.mean(0)
+
+	Ys_ridge = Y_ridge.copy() - Y_ridge_mean
+	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train_mean
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -1008,7 +1011,6 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 
 	Ytx = numpy.dot(Ys_ridge_train.T, X_ridge_train[:, -1])
 
-	# lams = numpy.logspace(-4, 5, 50)
 	lams = numpy.logspace(-4, 10, 50)
 
 	beta_by_lams = numpy.zeros((N_res, len(lams)))
@@ -1057,15 +1059,17 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	if is_verbose:
 		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
 
-	beta0 = beta0 - numpy.sum(beta*numpy.ravel(Y_ridge.mean(0)))
+	x_esn = numpy.ravel(numpy.dot(Y_ridge, beta) + beta0)
+	err_esn = numpy.ravel(X_ridge[:, -1]) - x_esn
 
-	if is_verbose:
-		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
+	# Retransform beta0 so that it can be used with the uncentered echo state node states.
+
+	beta0 = beta0 - numpy.sum(beta*numpy.ravel(Y_ridge_mean))
 
 	Wout_cv = numpy.concatenate(([beta0], beta))
 
-	x_esn = numpy.ravel(numpy.dot(Y_ridge, beta) + beta0)
-	err_esn = numpy.ravel(X_ridge[:, -1]) - x_esn
+	if is_verbose:
+		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
 
 	if return_regularization_path:
 		return Wout_cv, x_esn, err_esn, lams, beta_by_lams, lam_min
@@ -1171,8 +1175,11 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 	X_ridge_test = X_ridge[N_train:, :]
 	Y_ridge_test = Y_ridge[N_train:, :]
 
-	Ys_ridge = Y_ridge.copy() - Y_ridge.mean(0)
-	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train.mean(0)
+	Ys_ridge_mean = Y_ridge.mean(0)
+	Ys_ridge_mean_train = Y_ridge_train.mean(0)
+
+	Ys_ridge = Y_ridge.copy() - Ys_ridge_mean
+	Ys_ridge_train = Y_ridge_train.copy() - Ys_ridge_mean_train
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -1235,19 +1242,19 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 	if is_verbose:
 		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
 
-	beta0 = beta0 - numpy.dot(Y_ridge.mean(0), beta)
-
-	if is_verbose:
-		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
-
-	Wout_cv = numpy.row_stack((beta0, beta))
-
 	z_esn = numpy.dot(Y_ridge, beta) + beta0
 
 	y_esn = numpy.ravel(z_esn[:, 0])
 	x_esn = numpy.ravel(z_esn[:, 1])
 	err_esn_y = numpy.ravel(X_ridge[:, 0]) - y_esn
 	err_esn_x = numpy.ravel(X_ridge[:, 1]) - x_esn
+
+	beta0 = beta0 - numpy.dot(Y_ridge_mean, beta)
+
+	if is_verbose:
+		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
+
+	Wout_cv = numpy.row_stack((beta0, beta))
 
 	if return_regularization_path:
 		return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x, lams, beta_by_lams, lam_min
