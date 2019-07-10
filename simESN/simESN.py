@@ -793,7 +793,17 @@ def learn_io_esn_umd_sparse(y, x, qp_opt = (1, 1), N_res = 400, rho = 0.99, Win_
 		Wout, y_esn, x_esn, err_esn_y, err_esn_x = estimate_ridge_regression_joint_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
 		return y_esn, x_esn, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant
 
-def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant, qp_opt = None, is_stochastic = True, print_iter = False):
+def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant, qp_opt = None, is_stochastic = True, knn_errs = False, nn_number = None, print_iter = False):
+
+	if knn_errs == True:
+		Z_knn = numpy.concatenate((Y.T[:, :-1], X.T[:, :-1]), axis = 1)
+
+		if nn_number == None: # Use a rule-of-thumb to set the number of nearest neighbors, if not pre-specified.
+			nn_number = int(numpy.power(Z_knn.shape[0], 4./(Z_knn.shape[1] + 1 + 4)))
+
+		knn = neighbors.NearestNeighbors(nn_number, algorithm = 'kd_tree', p = 2.)
+
+		knn_out = knn.fit(Z_knn)
 
 	if qp_opt is None:
 		qp_opt = (Y.shape[0]-1, X.shape[0]-1)
@@ -827,7 +837,13 @@ def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W
 
 		z_esn_sim[:, t] = numpy.dot(vec_for_mult, Wout)
 		if is_stochastic:
-			K = numpy.random.choice(len(err_esn_y))
+			if knn_errs == True:
+				distances, neighbor_inds = knn_out.kneighbors(numpy.concatenate((z_esn_sim[0, t-q_opt:t].reshape(1, -1), z_esn_sim[1, t-p_opt:t].reshape(1, -1)), axis = 1))
+
+				K = numpy.random.choice(numpy.ravel(neighbor_inds), size = 1)
+			else:
+				K = numpy.random.choice(len(err_esn_y))
+
 			z_esn_sim[0, t] += err_esn_y[K] # Add noise sampled from the training set noise if assuming a stochastic dynamical system.
 			z_esn_sim[1, t] += err_esn_x[K] # Add noise sampled from the training set noise if assuming a stochastic dynamical system.
 
