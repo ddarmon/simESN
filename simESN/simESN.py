@@ -991,8 +991,11 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	Y_ridge_mean = Y_ridge.mean(0)
 	Y_ridge_train_mean = Y_ridge_train.mean(0)
 
+	# Ys_* are the centered versions of Y_*!
+
 	Ys_ridge = Y_ridge.copy() - Y_ridge_mean
 	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train_mean
+	Ys_ridge_test  = Y_ridge_test.copy() - Y_ridge_train_mean
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -1025,7 +1028,7 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 		beta = numpy.linalg.solve(S + lam*I, Ytx)
 		beta_by_lams[:, lam_ind] = numpy.ravel(beta)
 
-		Xhat = numpy.dot(Y_ridge_test, beta)
+		Xhat = numpy.dot(Ys_ridge_test, beta)
 
 		err_by_lams[lam_ind] = numpy.mean(numpy.power(X_ridge_test[:, -1] - (beta0 + Xhat), 2))
 
@@ -1059,7 +1062,7 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	if is_verbose:
 		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
 
-	x_esn = numpy.ravel(numpy.dot(Y_ridge, beta) + beta0)
+	x_esn = numpy.ravel(numpy.dot(Ys_ridge, beta) + beta0)
 	err_esn = numpy.ravel(X_ridge[:, -1]) - x_esn
 
 	# Retransform beta0 so that it can be used with the uncentered echo state node states.
@@ -1175,11 +1178,12 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 	X_ridge_test = X_ridge[N_train:, :]
 	Y_ridge_test = Y_ridge[N_train:, :]
 
-	Ys_ridge_mean = Y_ridge.mean(0)
-	Ys_ridge_mean_train = Y_ridge_train.mean(0)
+	Y_ridge_mean = Y_ridge.mean(0)
+	Y_ridge_mean_train = Y_ridge_train.mean(0)
 
-	Ys_ridge = Y_ridge.copy() - Ys_ridge_mean
-	Ys_ridge_train = Y_ridge_train.copy() - Ys_ridge_mean_train
+	Ys_ridge = Y_ridge.copy() - Y_ridge_mean
+	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_mean_train
+	Ys_ridge_test = Y_ridge_test.copy() - Y_ridge_mean_train
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -1190,9 +1194,9 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 
 	beta0 = X_ridge_train.mean(0)
 
-	S = numpy.dot(Y_ridge_train.T, Y_ridge_train)
+	S = numpy.dot(Ys_ridge_train.T, Ys_ridge_train)
 
-	Ytx = numpy.dot(Y_ridge_train.T, X_ridge_train)
+	Ytx = numpy.dot(Ys_ridge_train.T, X_ridge_train)
 
 	lams = numpy.logspace(-4, 10, 50)
 
@@ -1208,7 +1212,7 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 		beta = numpy.linalg.solve(S + lam*I, Ytx)
 		beta_by_lams[:, :, lam_ind] = beta
 
-		Xhat = numpy.dot(Y_ridge_test, beta)
+		Xhat = numpy.dot(Ys_ridge_test, beta)
 
 		err_by_lams[lam_ind] = numpy.mean(numpy.power(X_ridge_test - (beta0 + Xhat), 2))
 
@@ -1231,9 +1235,9 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 	#
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-	S = numpy.dot(Y_ridge.T, Y_ridge)
+	S = numpy.dot(Ys_ridge.T, Ys_ridge)
 
-	Ytx = numpy.dot(Y_ridge.T, X_ridge)
+	Ytx = numpy.dot(Ys_ridge.T, X_ridge)
 
 	beta = numpy.linalg.solve(S + lam_min*I, Ytx)
 
@@ -1242,7 +1246,7 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 	if is_verbose:
 		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
 
-	z_esn = numpy.dot(Y_ridge, beta) + beta0
+	z_esn = numpy.dot(Ys_ridge, beta) + beta0
 
 	y_esn = numpy.ravel(z_esn[:, 0])
 	x_esn = numpy.ravel(z_esn[:, 1])
