@@ -977,7 +977,8 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	Parameters
 	----------
 	X_ridge : numpy.array
-			The state of the dynamical system, stacked as an n x p data matrix.
+			The state of the dynamical system, including the lagged states,
+			stacked as an n x (p + 1) data matrix.
 	Y_ridge : numpy.array
 			The state of the reservoir nodes, stacked as an n x N_res data matrix.
 	to_plot : boolean
@@ -1135,95 +1136,7 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	else:
 		return Wout_cv, x_esn, err_esn
 
-def estimate_ridge_regression_joint_w_splithalf_cv_old(X_ridge, Y_ridge, to_plot = False, is_verbose = False):
-	N_res = Y_ridge.shape[1]
-
-	N_train = X_ridge.shape[0]//2
-
-	X_ridge_train = X_ridge[:N_train, :]
-	Y_ridge_train = Y_ridge[:N_train, :]
-
-	X_ridge_test = X_ridge[N_train:, :]
-	Y_ridge_test = Y_ridge[N_train:, :]
-
-	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	#
-	# Choose appropriate regularization parameter using 
-	# split-half  cross-validation.
-	#
-	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-	beta0 = X_ridge_train.mean(0)
-
-	S = numpy.dot(Y_ridge_train.T, Y_ridge_train)
-
-	Ytx = numpy.dot(Y_ridge_train.T, X_ridge_train)
-
-	lams = numpy.logspace(-4, 5, 50)
-
-	beta_by_lams = numpy.zeros((N_res, 2, len(lams)))
-	err_by_lams = numpy.zeros(len(lams))
-
-	I = numpy.identity(N_res)
-
-	for lam_ind, lam in enumerate(lams):
-		if is_verbose:
-			print("On lam_ind = {} of {}...".format(lam_ind + 1, len(lams)))
-
-		beta = numpy.linalg.solve(S + lam*I, Ytx)
-		beta_by_lams[:, :, lam_ind] = beta
-
-		Xhat = numpy.dot(Y_ridge_test, beta)
-
-		err_by_lams[lam_ind] = numpy.mean(numpy.power(X_ridge_test - Xhat, 2))
-
-	lam_argmin = numpy.argmin(err_by_lams)
-	lam_min = lams[lam_argmin]
-
-	if to_plot:
-		plt.figure()
-		plt.plot(lams, err_by_lams)
-		plt.xscale('log')
-
-		plt.axvline(lam_min, color = 'red')
-
-	if is_verbose:
-		print("Split-half CV chose lambda = {}".format(lam_min))
-
-	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	#
-	# Recompute beta using full time series:
-	#
-	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-	S = numpy.dot(Y_ridge.T, Y_ridge)
-
-	Ytx = numpy.dot(Y_ridge.T, X_ridge)
-
-	beta = numpy.linalg.solve(S + lam_min*I, Ytx)
-
-	beta0 = X_ridge.mean(0)
-
-	if is_verbose:
-		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
-
-	beta0 = beta0 - numpy.dot(Y_ridge.mean(0), beta)
-
-	if is_verbose:
-		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
-
-	Wout_cv = numpy.row_stack((beta0, beta))
-
-	z_esn = numpy.dot(Y_ridge, beta) + beta0
-
-	y_esn = numpy.ravel(z_esn[:, 0])
-	x_esn = numpy.ravel(z_esn[:, 1])
-	err_esn_y = numpy.ravel(X_ridge[:, 0]) - y_esn
-	err_esn_x = numpy.ravel(X_ridge[:, 1]) - x_esn
-
-	return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x
-
-def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False, return_regularization_path = False):
+def estimate_ridge_regression_joint_w_splithalf_cv_old(X_ridge, Y_ridge, to_plot = False, is_verbose = False, return_regularization_path = False):
 	"""
 	NEED TO UPDATE THIS FOR JOINT CASE:
 
@@ -1355,6 +1268,184 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 
 	if is_verbose:
 		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
+
+	Wout_cv = numpy.row_stack((beta0, beta))
+
+	if return_regularization_path:
+		return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x, lams, beta_by_lams, lam_min
+	else:
+		return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x
+
+def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False, return_regularization_path = False):
+	"""
+	Estimate the coefficients of a linear model X = f(Y) using split-half cross-validated ridge regression.
+
+	In this case, X_ridge is the state of the dynamical system stacked into a data matrix, and Y_ridge is the
+	reservoir states.
+
+	Parameters
+	----------
+	X_ridge : numpy.array
+			The state of the joint dynamical system, stacked as an n x d data matrix.
+			NOTE: Unlike estimate_ridge_regression_w_splithalf_cv, this *only*
+			includes the future of the joint dynamical system, and does not include
+			the lagged values.
+	Y_ridge : numpy.array
+			The state of the reservoir nodes, stacked as an n x N_res data matrix.
+	to_plot : boolean
+			Whether to plot the testing set MSE as a function of the
+			regularization parameter lambda.
+	is_verbose : boolean
+			Whether to print intermediate information.
+	return_regularization_path : boolean
+			Whether to return the estimated coefficients as a function of the
+			regularization parameter.
+
+	Returns
+	-------
+	Wout_cv : numpy.array
+			The estimated output weights for the ESN, including the intercept
+			as its first component.
+	y_esn : numpy.array
+			The predicted state of the first state of the dynamical system
+			using the ESN.
+	x_esn : numpy.array
+			The predicted state of the second state of the dynamical system
+			using the ESN.
+	err_esn_y : numpy.array
+			The residuals y - y_esn.
+	err_esn_x : numpy.array
+			The residuals x - x_esn.
+	lams : numpy.array
+			The values of the regularization parameter lambda.
+	beta_by_lams : numpy.array
+			The estimated coefficients as a function of the
+			regularization parameter lambda.
+	lam_min : float
+			The value of lambda that minimized the MSE on the 
+			testing set.
+	"""
+
+	# Split the data into a training and testing set.
+
+	N_res = Y_ridge.shape[1]
+
+	N_train = X_ridge.shape[0]//2
+
+	X_ridge_train = X_ridge[:N_train, :]
+	Y_ridge_train = Y_ridge[:N_train, :]
+
+	X_ridge_test = X_ridge[N_train:, :]
+	Y_ridge_test = Y_ridge[N_train:, :]
+
+	# Mean-center the ESN states, so that the intercept
+	# can be estimated separately, and thus not regularized.
+
+	Y_ridge_mean = Y_ridge.mean(0)
+	Y_ridge_mean_train = Y_ridge_train.mean(0)
+
+	Ys_ridge = Y_ridge.copy() - Y_ridge_mean
+	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_mean_train
+	Ys_ridge_test = Y_ridge_test.copy() - Y_ridge_mean_train
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Choose appropriate regularization parameter using 
+	# split-half  cross-validation.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	# The estimate of the intercept assuming the 
+	# predictors are mean-centered.
+
+	beta0 = X_ridge_train.mean(0)
+
+	# The covariance amongst the ESN states.
+
+	S = numpy.dot(Ys_ridge_train.T, Ys_ridge_train)
+
+	# The cross-covariance between the ESN states
+	# and the joint dynamical system state.
+
+	Ytx = numpy.dot(Ys_ridge_train.T, X_ridge_train)
+
+	# Choose the value of the regularization parameter
+	# that minimizes the MSE for the overall prediction
+	# of the dynamical system state.
+
+	lams = numpy.logspace(-4, 10, 50)
+
+	beta_by_lams = numpy.zeros((N_res, 2, len(lams)))
+	err_by_lams = numpy.zeros(len(lams))
+
+	I = numpy.identity(N_res)
+
+	for lam_ind, lam in enumerate(lams):
+		if is_verbose:
+			print("On lam_ind = {} of {}...".format(lam_ind + 1, len(lams)))
+
+		beta = numpy.linalg.solve(S + lam*I, Ytx)
+		beta_by_lams[:, :, lam_ind] = beta
+
+		Xhat = numpy.dot(Ys_ridge_test, beta)
+
+		err_by_lams[lam_ind] = numpy.mean(numpy.power(X_ridge_test - (beta0 + Xhat), 2))
+
+	lam_argmin = numpy.argmin(err_by_lams)
+	lam_min = lams[lam_argmin]
+
+	# Plot the MSE as a function of the regularization parameter.
+
+	if to_plot:
+		plt.figure()
+		plt.plot(lams, err_by_lams)
+		plt.xscale('log')
+
+		plt.axvline(lam_min, color = 'red')
+
+	if is_verbose:
+		print("Split-half CV chose lambda = {}".format(lam_min))
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Recompute beta using full time series:
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	S = numpy.dot(Ys_ridge.T, Ys_ridge)
+
+	Ytx = numpy.dot(Ys_ridge.T, X_ridge)
+
+	beta = numpy.linalg.solve(S + lam_min*I, Ytx)
+
+	beta0 = X_ridge.mean(0)
+
+	if is_verbose:
+		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
+
+	# The prediction of the joint state using the ESN.
+
+	z_esn = numpy.dot(Ys_ridge, beta) + beta0
+
+	# Pull out the predictions for each sub-state of the dynamical system.
+
+	y_esn = numpy.ravel(z_esn[:, 0])
+	x_esn = numpy.ravel(z_esn[:, 1])
+
+	# Pull out the residuals for each sub-state of the dynamical system.
+
+	err_esn_y = numpy.ravel(X_ridge[:, 0]) - y_esn
+	err_esn_x = numpy.ravel(X_ridge[:, 1]) - x_esn
+
+	# Re-transform the intercept so that the non-mean-centered
+	# ESN states can be used.
+
+	beta0 = beta0 - numpy.dot(Y_ridge_mean, beta)
+
+	if is_verbose:
+		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
+
+	# Stack the intercept onto the parameter estimate.
 
 	Wout_cv = numpy.row_stack((beta0, beta))
 
