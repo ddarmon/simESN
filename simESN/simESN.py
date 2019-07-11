@@ -971,18 +971,41 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	"""
 	Estimate the coefficients of a linear model X = f(Y) using split-half cross-validated ridge regression.
 
-	In this case, X_ridge is the state of the dynamical system stacked into a data matrix, and Y is the
+	In this case, X_ridge is the state of the dynamical system stacked into a data matrix, and Y_ridge is the
 	reservoir states.
 
 	Parameters
 	----------
-	var1 : type
-			description
+	X_ridge : numpy.array
+			The state of the dynamical system, stacked as an n x p data matrix.
+	Y_ridge : numpy.array
+			The state of the reservoir nodes, stacked as an n x N_res data matrix.
+	to_plot : boolean
+			Whether to plot the testing set MSE as a function of the
+			regularization parameter lambda.
+	is_verbose : boolean
+			Whether to print intermediate information.
+	return_regularization_path : boolean
+			Whether to return the estimated coefficients as a function of the
+			regularization parameter.
 
 	Returns
 	-------
-	var1 : type
-			description
+	Wout_cv : numpy.array
+			The estimated output weights for the ESN, including the intercept
+			as its first component.
+	x_esn : numpy.array
+			The predicted state of the dynamical system from using the ESN.
+	err_esn : numpy.array
+			The residuals x - x_esn.
+	lams : numpy.array
+			The values of the regularization parameter lambda.
+	beta_by_lams : numpy.array
+			The estimated coefficients as a function of the
+			regularization parameter lambda.
+	lam_min : float
+			The value of lambda that minimized the MSE on the 
+			testing set.
 
 	Notes
 	-----
@@ -994,6 +1017,9 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	>>> # Demonstrate code here.
 
 	"""
+
+	# Split the data into a training set and a testing set.
+
 	N_res = Y_ridge.shape[1]
 
 	N_train = X_ridge.shape[0]//2
@@ -1007,7 +1033,10 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	Y_ridge_mean = Y_ridge.mean(0)
 	Y_ridge_train_mean = Y_ridge_train.mean(0)
 
-	# Ys_* are the centered versions of Y_*!
+	# Mean-center the ESN states, so that the intercept is
+	# not regularized.
+	# 
+	# Note: Ys_* are the centered versions of Y_*
 
 	Ys_ridge = Y_ridge.copy() - Y_ridge_mean
 	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_train_mean
@@ -1021,14 +1050,25 @@ def estimate_ridge_regression_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 	# Minor annoyance here: in a standard regression of
-	# y ~ x, y = X and x = Y, based on how I named the
-	# system state X and the ESN states Y.
+	# y ~ x. In this case y = X and x = Y, based on how
+	# I named the system state X and the ESN states Y.
+
+	# The estimate of the intercept when the predictors
+	# are mean-centered.
 
 	beta0 = X_ridge_train[:, -1].mean()
 
+	# The covariance matrix from the ESN states.
+
 	S = numpy.dot(Ys_ridge_train.T, Ys_ridge_train)
 
+	# The cross-covariance matrix between the ESN states
+	# and the lagged dynamical system states.
+
 	Ytx = numpy.dot(Ys_ridge_train.T, X_ridge_train[:, -1])
+
+	# Select the value of lambda that minimizes the MSE
+	# on the testing set.
 
 	lams = numpy.logspace(-4, 10, 50)
 
@@ -1184,6 +1224,48 @@ def estimate_ridge_regression_joint_w_splithalf_cv_old(X_ridge, Y_ridge, to_plot
 	return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x
 
 def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False, return_regularization_path = False):
+	"""
+	NEED TO UPDATE THIS FOR JOINT CASE:
+
+	Estimate the coefficients of a linear model X = f(Y) using split-half cross-validated ridge regression.
+
+	In this case, X_ridge is the state of the dynamical system stacked into a data matrix, and Y_ridge is the
+	reservoir states.
+
+	Parameters
+	----------
+	X_ridge : numpy.array
+			The state of the joint dynamical system, stacked as an n x p data matrix.
+	Y_ridge : numpy.array
+			The state of the reservoir nodes, stacked as an n x N_res data matrix.
+	to_plot : boolean
+			Whether to plot the testing set MSE as a function of the
+			regularization parameter lambda.
+	is_verbose : boolean
+			Whether to print intermediate information.
+	return_regularization_path : boolean
+			Whether to return the estimated coefficients as a function of the
+			regularization parameter.
+
+	Returns
+	-------
+	Wout_cv : numpy.array
+			The estimated output weights for the ESN, including the intercept
+			as its first component.
+	x_esn : numpy.array
+			The predicted state of the dynamical system from using the ESN.
+	err_esn : numpy.array
+			The residuals x - x_esn.
+	lams : numpy.array
+			The values of the regularization parameter lambda.
+	beta_by_lams : numpy.array
+			The estimated coefficients as a function of the
+			regularization parameter lambda.
+	lam_min : float
+			The value of lambda that minimized the MSE on the 
+			testing set.
+	"""
+
 	N_res = Y_ridge.shape[1]
 
 	N_train = X_ridge.shape[0]//2
