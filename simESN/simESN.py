@@ -793,6 +793,76 @@ def learn_io_esn_umd_sparse(y, x, qp_opt = (1, 1), N_res = 400, rho = 0.99, Win_
 		Wout, y_esn, x_esn, err_esn_y, err_esn_x = estimate_ridge_regression_joint_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
 		return y_esn, x_esn, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant
 
+def learn_multvar_esn_umd_sparse(z, p_opt, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, renormalize_by = 'svd', return_regularization_path = False):
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Set up data structures for the echo state network.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	# Embedded time series, d x (T - p_opt) x (p_opt + 1)
+
+	d = z.shape[0]
+
+	Z = sidpy.embed_ts_multvar(z, p_opt)
+
+	U = numpy.matrix(numpy.random.rand(N_res, Z.shape[1]))
+
+	Win  = Win_scale*2*(numpy.random.rand(N_res, d*p_opt) - 0.5)
+
+	if multi_bias:
+		bias_constant = 2*(numpy.random.rand(N_res).reshape(-1, 1) - 0.5)
+	else:
+		bias_constant = 2*(numpy.random.rand(1) - 0.5)
+
+	mean_degree = 10
+	p_erdosrenyi = mean_degree/float(N_res)
+
+	W = scipy.sparse.random(m = N_res, n = N_res, density = p_erdosrenyi, data_rvs = scipy.stats.uniform(loc = -0.5, scale = 1).rvs)
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Normalize W.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	if renormalize_by == 'svd': # Normalize by the largest singular value of W.
+		s = scipy.sparse.linalg.svds(W, k=1)
+
+		W = W.multiply(numpy.abs(rho/float(s[1])))
+	elif renormalize_by == 'eigen': # Normalize by the spectral radius of the W.
+		lam = scipy.sparse.linalg.eigs(W, k=1)
+
+		W = W.multiply(numpy.abs(rho/float(numpy.abs(lam[0]))))
+
+	if output_verbose:
+		print("Running ESN with time series as input:")
+
+	for t in range(1, Z.shape[1]):
+		# U[:, t] = numpy.tanh(numpy.dot(Win, numpy.row_stack((Y[:-1, t], X[:-1, t]))) + W.dot(U[:, t-1]) + bias_constant)
+		### DOUBLE CHECK THIS!
+		U[:, t] = numpy.tanh(numpy.dot(Win, Z[:, t, :-1]) + W.dot(U[:, t-1]) + bias_constant)
+
+	if output_verbose:
+		print("Done running ESN with time series as input:")
+
+		print("Estimating output weights:")
+
+	# Using Ridge Regression:
+
+	# target = numpy.row_stack((Y[-1, :], X[-1, :])).T
+	# target should be (T - p_max) x d
+	target = Z[:, :, -1].T
+
+	if return_regularization_path:
+		Wout, z_esn, err_esn, lams, beta_by_lams, lam_min = estimate_ridge_regression_multvar_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
+
+		return z_esn, Z, U, err_esn, Win, W, Wout, bias_constant, lams, beta_by_lams, lam_min
+	else:
+		Wout, z_esn, err_esn = estimate_ridge_regression_multvar_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
+		return z_esn, Z, U, err_esn, Win, W, Wout, bias_constant
+
 def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant, qp_opt = None, is_stochastic = True, knn_errs = False, nn_number = None, print_iter = False):
 
 	if knn_errs == True:
@@ -1453,3 +1523,124 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 		return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x, lams, beta_by_lams, lam_min
 	else:
 		return Wout_cv, y_esn, x_esn, err_esn_y, err_esn_x
+
+def estimate_ridge_regression_multvar_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False, return_regularization_path = False):
+	# Split the data into a training and testing set.
+
+	N_res = Y_ridge.shape[1]
+
+	N_train = X_ridge.shape[0]//2
+
+	X_ridge_train = X_ridge[:N_train, :]
+	Y_ridge_train = Y_ridge[:N_train, :]
+
+	X_ridge_test = X_ridge[N_train:, :]
+	Y_ridge_test = Y_ridge[N_train:, :]
+
+	# Mean-center the ESN states, so that the intercept
+	# can be estimated separately, and thus not regularized.
+
+	Y_ridge_mean = Y_ridge.mean(0)
+	Y_ridge_mean_train = Y_ridge_train.mean(0)
+
+	Ys_ridge = Y_ridge.copy() - Y_ridge_mean
+	Ys_ridge_train = Y_ridge_train.copy() - Y_ridge_mean_train
+	Ys_ridge_test = Y_ridge_test.copy() - Y_ridge_mean_train
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Choose appropriate regularization parameter using 
+	# split-half  cross-validation.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	# The estimate of the intercept assuming the 
+	# predictors are mean-centered.
+
+	beta0 = X_ridge_train.mean(0)
+
+	# The covariance amongst the ESN states.
+
+	S = numpy.dot(Ys_ridge_train.T, Ys_ridge_train)
+
+	# The cross-covariance between the ESN states
+	# and the joint dynamical system state.
+
+	Ytx = numpy.dot(Ys_ridge_train.T, X_ridge_train)
+
+	# Choose the value of the regularization parameter
+	# that minimizes the MSE for the overall prediction
+	# of the dynamical system state.
+
+	lams = numpy.logspace(-4, 10, 50)
+
+	beta_by_lams = numpy.zeros((N_res, X_ridge.shape[1], len(lams)))
+	err_by_lams = numpy.zeros(len(lams))
+
+	I = numpy.identity(N_res)
+
+	for lam_ind, lam in enumerate(lams):
+		if is_verbose:
+			print("On lam_ind = {} of {}...".format(lam_ind + 1, len(lams)))
+
+		beta = numpy.linalg.solve(S + lam*I, Ytx)
+		beta_by_lams[:, :, lam_ind] = beta
+
+		Xhat = numpy.dot(Ys_ridge_test, beta)
+
+		err_by_lams[lam_ind] = numpy.mean(numpy.power(X_ridge_test - (beta0 + Xhat), 2))
+
+	lam_argmin = numpy.argmin(err_by_lams)
+	lam_min = lams[lam_argmin]
+
+	# Plot the MSE as a function of the regularization parameter.
+
+	if to_plot:
+		plt.figure()
+		plt.plot(lams, err_by_lams)
+		plt.xscale('log')
+
+		plt.axvline(lam_min, color = 'red')
+
+	if is_verbose:
+		print("Split-half CV chose lambda = {}".format(lam_min))
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Recompute beta using full time series:
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	S = numpy.dot(Ys_ridge.T, Ys_ridge)
+
+	Ytx = numpy.dot(Ys_ridge.T, X_ridge)
+
+	beta = numpy.linalg.solve(S + lam_min*I, Ytx)
+
+	beta0 = X_ridge.mean(0)
+
+	if is_verbose:
+		print("The intercept assuming mean-centered predictors is:\n{}".format(beta0))
+
+	# The prediction of the joint state using the ESN.
+
+	z_esn = numpy.dot(Ys_ridge, beta) + beta0
+
+	err_esn = X_ridge - z_esn
+
+	# Re-transform the intercept so that the non-mean-centered
+	# ESN states can be used.
+
+	beta0 = beta0 - numpy.dot(Y_ridge_mean, beta)
+
+	if is_verbose:
+		print("The intercept without  mean-centered predictors is:\n{}".format(beta0))
+
+	# Stack the intercept onto the parameter estimate.
+
+	Wout_cv = numpy.row_stack((beta0, beta))
+
+	if return_regularization_path:
+		return Wout_cv, z_esn, err_esn, lams, beta_by_lams, lam_min
+	else:
+		return Wout_cv, z_esn, err_esn
