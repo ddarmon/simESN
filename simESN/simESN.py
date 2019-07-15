@@ -929,8 +929,29 @@ def simulate_from_multvar_esn_umd_sparse(N_sim, Z, U, err_esn, Win, W, Wout, bia
 
 	# print("WARNING: Transforming half the reservoir states to their squares to match Girvan, et al.!")
 
-	p_opt = Z.shape[2] - 1
+	# Z ~ d x (T - p_opt) x (p_opt + 1)
+
 	d = Z.shape[0]
+	p_opt = Z.shape[2] - 1
+
+	if knn_errs == True:
+		# Reshape Z_knn first to
+		# 
+		# 	Z_knn ~ (T - p_opt) x d x p_opt
+		# 
+		# and then to
+		# 
+		# 	Z_knn ~ (T - p_opt) x d*p_opt
+
+		Z_knn = numpy.swapaxes(Z[:, :, :-1], 0, 1)
+		Z_knn = numpy.reshape(Z_knn, (-1, d*p_opt))
+
+		if nn_number == None: # Use a rule-of-thumb to set the number of nearest neighbors, if not pre-specified.
+			nn_number = int(numpy.power(Z_knn.shape[0], 4./(Z_knn.shape[1] + 1 + 4)))
+
+		knn = neighbors.NearestNeighbors(nn_number, algorithm = 'kd_tree', p = 2.)
+
+		knn_out = knn.fit(Z_knn)
 
 	J = numpy.random.randint(1, Z.shape[1])
 
@@ -966,7 +987,12 @@ def simulate_from_multvar_esn_umd_sparse(N_sim, Z, U, err_esn, Win, W, Wout, bia
 
 		z_esn_sim[:, t] = numpy.dot(vec_for_mult, Wout)
 		if is_stochastic:
-			K = numpy.random.choice(err_esn.shape[0])
+			if knn_errs == True:
+				distances, neighbor_inds = knn_out.kneighbors(z_esn_sim[:, t-p_opt:t].reshape((1, d*p_opt)))
+
+				K = numpy.random.choice(numpy.ravel(neighbor_inds), size = 1)
+			else:
+				K = numpy.random.choice(err_esn.shape[0])
 
 			z_esn_sim[:, t] += numpy.array(err_esn[K, :]).ravel()
 
