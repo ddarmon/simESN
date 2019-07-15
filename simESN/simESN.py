@@ -998,6 +998,40 @@ def simulate_from_multvar_esn_umd_sparse(N_sim, Z, U, err_esn, Win, W, Wout, bia
 
 	return z_esn_sim
 
+def predict_from_multvar_esn(J, N_forward, Z, U, err_esn, Win, W, Wout, bias_constant):
+
+	# Z ~ d x (T - p_opt) x (p_opt + 1)
+
+	d = Z.shape[0]
+	p_opt = Z.shape[2] - 1
+
+	z_esn_pred = numpy.zeros((d, N_forward + p_opt))
+	z_esn_pred[:, :p_opt] = Z[:, J, :-1]
+
+	U_pred = U[:, J] # 1 x Nres
+
+	vec_for_mult = numpy.column_stack(([1], U_pred.T)) # 1 x (1 + Nres)
+
+	for t in range(p_opt, N_forward + p_opt):
+		Zt = z_esn_pred[:, t-p_opt:t]
+
+		U_pred = numpy.tanh(numpy.dot(Win, Zt.ravel()).reshape(-1, 1) + W.dot(U_pred) + bias_constant)
+
+		####################################################
+		# 
+
+		# U_pred[int(U_pred.shape[0]/2):] = numpy.power(U_pred[int(U_pred.shape[0]/2):], 2)
+
+														   #
+		####################################################
+		 
+
+		vec_for_mult[0, 1:] = U_pred.T
+
+		z_esn_pred[:, t] = numpy.dot(vec_for_mult, Wout)
+
+	return z_esn_pred
+
 # This version is not (?) handling the intercept correctly when doing ridge regression, since the
 # way I have implemented it requires that the data matrix be column-standardized (i.e. means
 # down columns should equal 0.)
