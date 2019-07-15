@@ -801,11 +801,13 @@ def learn_multvar_esn_umd_sparse(z, p_opt, N_res = 400, rho = 0.99, Win_scale = 
 	#
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-	# Embedded time series, d x (T - p_opt) x (p_opt + 1)
-
 	d = z.shape[0]
 
+	# Embedded time series, d x (T - p_opt) x (p_opt + 1)
+
 	Z = sidpy.embed_ts_multvar(z, p_opt)
+
+	# Reservoir states, N_res x (T - p_opt)
 
 	U = numpy.matrix(numpy.random.rand(N_res, Z.shape[1]))
 
@@ -816,7 +818,9 @@ def learn_multvar_esn_umd_sparse(z, p_opt, N_res = 400, rho = 0.99, Win_scale = 
 	else:
 		bias_constant = 2*(numpy.random.rand(1) - 0.5)
 
-	mean_degree = 10
+	# WARNING: Change this back.
+	mean_degree = 10 # What I had
+	# mean_degree = 3 # What Michelle has in her KS paper
 	p_erdosrenyi = mean_degree/float(N_res)
 
 	W = scipy.sparse.random(m = N_res, n = N_res, density = p_erdosrenyi, data_rvs = scipy.stats.uniform(loc = -0.5, scale = 1).rvs)
@@ -842,7 +846,9 @@ def learn_multvar_esn_umd_sparse(z, p_opt, N_res = 400, rho = 0.99, Win_scale = 
 	for t in range(1, Z.shape[1]):
 		# U[:, t] = numpy.tanh(numpy.dot(Win, numpy.row_stack((Y[:-1, t], X[:-1, t]))) + W.dot(U[:, t-1]) + bias_constant)
 		### DOUBLE CHECK THIS!
-		U[:, t] = numpy.tanh(numpy.dot(Win, Z[:, t, :-1]) + W.dot(U[:, t-1]) + bias_constant)
+		# import ipdb
+		# ipdb.set_trace()
+		U[:, t] = numpy.tanh(numpy.dot(Win, Z[:, t, :-1].ravel()).reshape(-1, 1) + W.dot(U[:, t-1]) + bias_constant)
 
 	if output_verbose:
 		print("Done running ESN with time series as input:")
@@ -921,6 +927,8 @@ def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W
 
 def simulate_from_multvar_esn_umd_sparse(N_sim, Z, U, err_esn, Win, W, Wout, bias_constant, p_opt = None, is_stochastic = True, knn_errs = False, nn_number = None, print_iter = False):
 
+	# print("WARNING: Transforming half the reservoir states to their squares to match Girvan, et al.!")
+
 	p_opt = Z.shape[2] - 1
 	d = Z.shape[0]
 
@@ -943,15 +951,24 @@ def simulate_from_multvar_esn_umd_sparse(N_sim, Z, U, err_esn, Win, W, Wout, bia
 		# Zt = z_esn_sim[:, t-p_opt:t].ravel(order = 'C').reshape(-1, 1)
 		Zt = z_esn_sim[:, t-p_opt:t]
 
-		U_sim = numpy.tanh(numpy.dot(Win, Zt) + W.dot(U_sim) + bias_constant)
+		U_sim = numpy.tanh(numpy.dot(Win, Zt.ravel()).reshape(-1, 1) + W.dot(U_sim) + bias_constant)
 
-		vec_for_mult[0, 1:] = U_sim[:, 0].T
+		####################################################
+		# 
+
+		# U_sim[int(U_sim.shape[0]/2):] = numpy.power(U_sim[int(U_sim.shape[0]/2):], 2)
+
+														   #
+		####################################################
+		 
+
+		vec_for_mult[0, 1:] = U_sim.T
 
 		z_esn_sim[:, t] = numpy.dot(vec_for_mult, Wout)
 		if is_stochastic:
 			K = numpy.random.choice(err_esn.shape[0])
 
-			z_esn_sim[:, t] += err_esn[K, :]
+			z_esn_sim[:, t] += numpy.array(err_esn[K, :]).ravel()
 
 	return z_esn_sim
 
@@ -1562,8 +1579,20 @@ def estimate_ridge_regression_joint_w_splithalf_cv(X_ridge, Y_ridge, to_plot = F
 
 def estimate_ridge_regression_multvar_w_splithalf_cv(X_ridge, Y_ridge, to_plot = False, is_verbose = False, return_regularization_path = False):
 	# Split the data into a training and testing set.
-
+	
 	N_res = Y_ridge.shape[1]
+
+	####################################################
+	# 
+
+	# print("WARNING: Transforming half the reservoir states to their squares to match Girvan, et al.!")
+
+	# T     = Y_ridge.shape[0]
+
+	# Y_ridge[:, int(N_res/2):] = numpy.power(Y_ridge[:, int(N_res/2):], 2)
+
+													   #
+	####################################################
 
 	N_train = X_ridge.shape[0]//2
 
@@ -1628,6 +1657,9 @@ def estimate_ridge_regression_multvar_w_splithalf_cv(X_ridge, Y_ridge, to_plot =
 
 	lam_argmin = numpy.argmin(err_by_lams)
 	lam_min = lams[lam_argmin]
+
+	# print('WARNING: Fixing lambda rather than estimating using cross-validation!')
+	# lam_min = 0.0001
 
 	# Plot the MSE as a function of the regularization parameter.
 
