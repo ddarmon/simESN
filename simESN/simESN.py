@@ -919,6 +919,42 @@ def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W
 
 	return z_esn_sim[0, :], z_esn_sim[1, :]
 
+def simulate_from_multvar_esn_umd_sparse(N_sim, Z, U, err_esn, Win, W, Wout, bias_constant, p_opt = None, is_stochastic = True, knn_errs = False, nn_number = None, print_iter = False):
+
+	p_opt = Z.shape[2] - 1
+	d = Z.shape[0]
+
+	J = numpy.random.randint(1, Z.shape[1])
+
+	z_esn_sim = numpy.zeros((d, N_sim))
+	z_esn_sim[:, :p_opt] = Z[:, J, :-1]
+
+	U_sim = U[:, J] # 1 x Nres
+
+	vec_for_mult = numpy.column_stack(([1], U_sim.T)) # 1 x (1 + Nres)
+
+	for t in range(p_opt, N_sim):
+		if t % 10000 == 0:
+			if print_iter:
+				print("On iterate {} of {}.".format(t + 1, N_sim))
+
+		# Note sure about this:
+		# Zt = z_esn_sim[:, t-p_opt:t].ravel(order = 'F').reshape(-1, 1)
+		# Zt = z_esn_sim[:, t-p_opt:t].ravel(order = 'C').reshape(-1, 1)
+		Zt = z_esn_sim[:, t-p_opt:t]
+
+		U_sim = numpy.tanh(numpy.dot(Win, Zt) + W.dot(U_sim) + bias_constant)
+
+		vec_for_mult[0, 1:] = U_sim[:, 0].T
+
+		z_esn_sim[:, t] = numpy.dot(vec_for_mult, Wout)
+		if is_stochastic:
+			K = numpy.random.choice(err_esn.shape[0])
+
+			z_esn_sim[:, t] += err_esn[K, :]
+
+	return z_esn_sim
+
 # This version is not (?) handling the intercept correctly when doing ridge regression, since the
 # way I have implemented it requires that the data matrix be column-standardized (i.e. means
 # down columns should equal 0.)
