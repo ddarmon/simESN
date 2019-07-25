@@ -893,7 +893,7 @@ def learn_multvar_io_esn_umd_sparse(z, v, p_opt, q_opt, N_res = 400, rho = 0.99,
 	# Extract only the necessary rows from Z and V:
 
 	Z = Z[:, qp_max-p_opt:, :]
-	V = X[:, qp_max-q_opt:]
+	V = V[:, qp_max-q_opt:]
 
 	# Reservoir states, N_res x (T - p_opt)
 
@@ -942,7 +942,9 @@ def learn_multvar_io_esn_umd_sparse(z, v, p_opt, q_opt, N_res = 400, rho = 0.99,
 
 		### START HERE: Need to stack V at end of ravel-ed Z and go from there:
 
-		U[:, t] = numpy.tanh(numpy.dot(Win, Z[:, t, :-1].ravel()).reshape(-1, 1) + W.dot(U[:, t-1]) + bias_constant)
+		io_stacked_vec = numpy.concatenate((Z[:, t, :-1].ravel(), V[t, :]))
+
+		U[:, t] = numpy.tanh(numpy.dot(Win, io_stacked_vec).reshape(-1, 1) + W.dot(U[:, t-1]) + bias_constant)
 
 	if output_verbose:
 		print("Done running ESN with time series as input:")
@@ -958,10 +960,10 @@ def learn_multvar_io_esn_umd_sparse(z, v, p_opt, q_opt, N_res = 400, rho = 0.99,
 	if return_regularization_path:
 		Wout, z_esn, err_esn, lams, beta_by_lams, lam_min = estimate_ridge_regression_multvar_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
 
-		return z_esn, Z, U, err_esn, Win, W, Wout, bias_constant, lams, beta_by_lams, lam_min
+		return z_esn, Z, V, U, err_esn, Win, W, Wout, bias_constant, lams, beta_by_lams, lam_min
 	else:
 		Wout, z_esn, err_esn = estimate_ridge_regression_multvar_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
-		return z_esn, Z, U, err_esn, Win, W, Wout, bias_constant
+		return z_esn, Z, V, U, err_esn, Win, W, Wout, bias_constant
 
 def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant, qp_opt = None, is_stochastic = True, knn_errs = False, nn_number = None, print_iter = False):
 
