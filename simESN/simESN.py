@@ -869,6 +869,100 @@ def learn_multvar_esn_umd_sparse(z, p_opt, N_res = 400, rho = 0.99, Win_scale = 
 		Wout, z_esn, err_esn = estimate_ridge_regression_multvar_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
 		return z_esn, Z, U, err_esn, Win, W, Wout, bias_constant
 
+def learn_multvar_io_esn_umd_sparse(z, v, p_opt, q_opt, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, renormalize_by = 'svd', return_regularization_path = False):
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Set up data structures for the echo state network.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	d = z.shape[0]
+
+	qp_max = numpy.max([q_opt, p_opt])
+	qp_sum = numpy.sum([q_opt, p_opt])
+
+	# Embedded time series, d x (T - qp_max) x (qp_max + 1)
+
+	Z = sidpy.embed_ts_multvar(z, qp_max)
+
+	# Embedded input is (T - qp_max) x (qp_max + 1)
+
+	V = sidpy.embed_ts(v, qp_max)
+
+	# Extract only the necessary rows from Z and V:
+
+	Z = Z[:, qp_max-p_opt:, :]
+	V = X[:, qp_max-q_opt:]
+
+	# Reservoir states, N_res x (T - p_opt)
+
+	U = numpy.matrix(numpy.random.rand(N_res, Z.shape[1]))
+
+	# This (vvv) assumes we include the **present** value of the input
+	# in the prediction.
+
+	Win  = Win_scale*2*(numpy.random.rand(N_res, d*p_opt + (q_opt + 1)) - 0.5)
+
+	if multi_bias:
+		bias_constant = 2*(numpy.random.rand(N_res).reshape(-1, 1) - 0.5)
+	else:
+		bias_constant = 2*(numpy.random.rand(1) - 0.5)
+
+	# WARNING: Change this back.
+	mean_degree = 10 # What I had
+	# mean_degree = 3 # What Michelle has in her KS paper
+	p_erdosrenyi = mean_degree/float(N_res)
+
+	W = scipy.sparse.random(m = N_res, n = N_res, density = p_erdosrenyi, data_rvs = scipy.stats.uniform(loc = -0.5, scale = 1).rvs)
+
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	#
+	# Normalize W.
+	#
+	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	if renormalize_by == 'svd': # Normalize by the largest singular value of W.
+		s = scipy.sparse.linalg.svds(W, k=1)
+
+		W = W.multiply(numpy.abs(rho/float(s[1])))
+	elif renormalize_by == 'eigen': # Normalize by the spectral radius of the W.
+		lam = scipy.sparse.linalg.eigs(W, k=1)
+
+		W = W.multiply(numpy.abs(rho/float(numpy.abs(lam[0]))))
+
+	if output_verbose:
+		print("Running ESN with time series as input:")
+
+	for t in range(1, Z.shape[1]):
+		# U[:, t] = numpy.tanh(numpy.dot(Win, numpy.row_stack((Y[:-1, t], X[:-1, t]))) + W.dot(U[:, t-1]) + bias_constant)
+		### DOUBLE CHECK THIS!
+		# import ipdb
+		# ipdb.set_trace()
+
+		### START HERE: Need to stack V at end of ravel-ed Z and go from there:
+
+		U[:, t] = numpy.tanh(numpy.dot(Win, Z[:, t, :-1].ravel()).reshape(-1, 1) + W.dot(U[:, t-1]) + bias_constant)
+
+	if output_verbose:
+		print("Done running ESN with time series as input:")
+
+		print("Estimating output weights:")
+
+	# Using Ridge Regression:
+
+	# target = numpy.row_stack((Y[-1, :], X[-1, :])).T
+	# target should be (T - p_max) x d
+	target = Z[:, :, -1].T
+
+	if return_regularization_path:
+		Wout, z_esn, err_esn, lams, beta_by_lams, lam_min = estimate_ridge_regression_multvar_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
+
+		return z_esn, Z, U, err_esn, Win, W, Wout, bias_constant, lams, beta_by_lams, lam_min
+	else:
+		Wout, z_esn, err_esn = estimate_ridge_regression_multvar_w_splithalf_cv(target, U.T, to_plot = to_plot_regularization, return_regularization_path = return_regularization_path)
+		return z_esn, Z, U, err_esn, Win, W, Wout, bias_constant
+
 def simulate_from_io_esn_umd_sparse(N_sim, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant, qp_opt = None, is_stochastic = True, knn_errs = False, nn_number = None, print_iter = False):
 
 	if knn_errs == True:
