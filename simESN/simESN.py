@@ -1306,12 +1306,62 @@ def predict_from_multvar_esn(J, N_forward, Z, U, err_esn, Win, W, Wout, bias_con
 
 	return z_esn_pred
 
-def predict_from_multvar_io_esn(J, N_forward, Z, V, U, err_esn, Win, W, Wout, bias_constant):
+def predict_from_multvar_io_esn(J, N_forward, Z, V, U, Win, W, Wout, bias_constant):
+	"""
+	predict_from_multvar_io_esn uses a fitted echo state network to perform N_forward
+	step-ahead prediction in the presence of a (known) exogenous input.
+
+	Parameters
+	----------
+	J : int
+			The time index to predict ahead from, corresponding
+			to the Jth row in Z, and hence the time index J + qp_max
+			where p is the model order for z and q is the model order
+			for v.
+	Z : numpy.array
+			The data matrix representation of z used to drive
+			the echo state network, stored as a 
+			d x (T - p_opt) x (p_opt + 1) numpy array.
+	V : numpy.array
+			The data matrix representation of v used to drive
+			the echo state network, stored as a 
+			(T - p_opt) x (p_opt + 1) numpy array.
+	U : numpy.array
+			The states of nodes of the the echo state network.
+			U[i, t] corresponds to the state of the i-th node
+			at the t-th time point.
+	Win : numpy.array
+			The input-weight matrix.
+	W : numpy.array
+			The echo state network weight matrix.
+	Wout : numpy.array
+			The weights estimated for the linear regression
+			of the next-step future on the state of the
+			echo state nodes.
+	bias_constant : numpy.array
+			The bias constant matrix.
+
+	Returns
+	-------
+	z_esn_pred : numpy.array
+			The predictions 
+
+	Notes
+	-----
+	Any notes go here.
+
+	Examples
+	--------
+	>>> import module_name
+	>>> # Demonstrate code here.
+
+	"""
 
 	# Z ~ d x (T - p_opt) x (p_opt + 1)
 
 	d = Z.shape[0]
 	p_opt = Z.shape[2] - 1
+	q_opt = V.shape[1] - 1
 
 	z_esn_pred = numpy.zeros((d, N_forward + p_opt))
 	z_esn_pred[:, :p_opt] = Z[:, J, :-1]
@@ -1323,22 +1373,16 @@ def predict_from_multvar_io_esn(J, N_forward, Z, V, U, err_esn, Win, W, Wout, bi
 	for t in range(p_opt, N_forward + p_opt):
 		Zt = z_esn_pred[:, t-p_opt:t]
 
-		## NEED TO HANDLE THE FACT THAT POPT AND QOPT CAN BE DIFFERENT HERE
+		## NEED TO HANDLE THE FACT THAT POPT AND QOPT CAN BE DIFFERENT HERE???
 		Vt = V[J + t - p_opt, :]
 
 		io_stacked_vec = numpy.concatenate((Zt.ravel(), Vt))
 
 		U_pred = numpy.tanh(numpy.dot(Win, io_stacked_vec).reshape(-1, 1) + W.dot(U_pred) + bias_constant)
 
-		####################################################
-		# 
+		# NOTE: vec_for_mult[0, 1:] here rather than vec_for_mult[1:] because
+		# vec_for_mult is a (1, N_res + 1) array rather than a (N_res + 1,) array.
 
-		# U_pred[int(U_pred.shape[0]/2):] = numpy.power(U_pred[int(U_pred.shape[0]/2):], 2)
-
-														   #
-		####################################################
-		 
-		## DOUBLE CHECK THIS: Why [0, 1:] and not just [1:]?
 		vec_for_mult[0, 1:] = U_pred.T
 
 		z_esn_pred[:, t] = numpy.dot(vec_for_mult, Wout)
