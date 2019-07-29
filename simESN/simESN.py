@@ -794,6 +794,93 @@ def learn_io_esn_umd_sparse(y, x, qp_opt = (1, 1), N_res = 400, rho = 0.99, Win_
 		return y_esn, x_esn, Y, X, U, err_esn_y, err_esn_x, Win, W, Wout, bias_constant
 
 def learn_multvar_esn_umd_sparse(z, p_opt, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, renormalize_by = 'svd', return_regularization_path = False):
+	"""
+	learn_multvar_esn_umd_sparse is for jointly modeling a multivariate time series with no
+	assumptions about how each component of the time series is related.
+
+	Generate an echo state network (ESN) using the ESN architecture from:
+
+	J. Pathak, Z. Lu, B. R. Hunt, M. Girvan, and E. Ott, "Using machine learning to replicate
+	chaotic attractors and calculate lyapunov exponents from data,"
+	Chaos: An Interdisciplinary Journal of Nonlinear Science 27, 121102 (2017).
+	
+	drive the ESN using the multivariate time series in z, and estimate the output weights mapping
+	the states of the ESN nodes to the output of the multivariate time series using ridge regression
+	with the penalty parameter chosen by split-half cross-validation.
+
+	Parameters
+	----------
+	z : numpy.array
+			The multivariate time series, stored in a d x T numpy array.
+	p_opt : float
+			The overall number of lags to use.
+	N_res : int
+			The number of reservoir nodes in the ESN.
+	rho : float
+			The reservoir matrix W is rescaled to have largest singular
+			value or spectral radius of rho. See renormalize_by.
+	Win_scale : float
+			The amount to scale the input weights, which by default
+			taken to be uniform on [-1, 1].
+	multi_bias : boolean
+			Whether each reservoir node should get its own bias constant, or
+			a single bias constant is used for all reservoir nodes (default).
+	to_plot_regularization : boolean
+			Whether or not to plot the split-half cross-validated mean squared
+			error of the ridge regression as a function of its penalty parameter
+			lambda. This can be useful to ensure that a reasonable value of 
+			lambda is chosen, e.g. one not-too-large or not-too-small.
+	output_verbose : boolean
+			Whether or not to print various progress statements.
+	renormalize_by : str
+			One of {'svd', 'eigen'}, determines whether the 
+			largest singular value (svd) or spectral radius (eigen)
+			of W is rescaled to have value rho. Rescaling the
+			largest singular value to be less than 1 is sufficient
+			to ensure the echo state property, while rescaling the 
+			spectral radius to be less than 1 is necessary when
+			the input process admits the zero sequence.
+
+			NOTE: Generally, taking rho(W) > 1 can be desirable,
+			and this choice tends to depend on the properties of
+			the system being modeled.
+
+	Returns
+	-------
+	z_esn : numpy.array
+			The prediction of the next-step future the multivariate time series.
+	Z : numpy.array
+			The data matrix representation of z used to drive
+			the echo state network, stored as a 
+			d x (T - p_opt) x (p_opt + 1) numpy array.
+	U : numpy.array
+			The states of nodes of the the echo state network.
+			U[i, t] corresponds to the state of the i-th node
+			at the t-th time point.
+	err_esn : numpy.array
+			The error between the next-step future of z and
+			the predicted next-step future of z.
+	Win : numpy.array
+			The input-weight matrix.
+	W : numpy.array
+			The echo state network weight matrix.
+	Wout : numpy.array
+			The weights estimated for the linear regression
+			of the next-step future on the state of the
+			echo state nodes.
+	bias_constant : numpy.array
+			The bias constant matrix.
+
+	Notes
+	-----
+	Any notes go here.
+
+	Examples
+	--------
+	>>> import module_name
+	>>> # Demonstrate code here.
+
+	"""
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -857,7 +944,6 @@ def learn_multvar_esn_umd_sparse(z, p_opt, N_res = 400, rho = 0.99, Win_scale = 
 
 	# Using Ridge Regression:
 
-	# target = numpy.row_stack((Y[-1, :], X[-1, :])).T
 	# target should be (T - p_max) x d
 	target = Z[:, :, -1].T
 
@@ -870,6 +956,106 @@ def learn_multvar_esn_umd_sparse(z, p_opt, N_res = 400, rho = 0.99, Win_scale = 
 		return z_esn, Z, U, err_esn, Win, W, Wout, bias_constant
 
 def learn_multvar_io_esn_umd_sparse(z, v, p_opt, q_opt, N_res = 400, rho = 0.99, Win_scale = 1., multi_bias = False, to_plot_regularization = False, output_verbose = False, renormalize_by = 'svd', return_regularization_path = False):
+	"""
+	learn_multvar_io_esn_umd_sparse is for jointly modeling a multivariate time series with no
+	assumptions about how each component of the time series is related in the case where 
+	there is also an **exogenous** input time series assumed to drive the time series.
+
+	Generate an echo state network (ESN) using the ESN architecture from:
+
+	J. Pathak, Z. Lu, B. R. Hunt, M. Girvan, and E. Ott, "Using machine learning to replicate
+	chaotic attractors and calculate lyapunov exponents from data,"
+	Chaos: An Interdisciplinary Journal of Nonlinear Science 27, 121102 (2017).
+	
+	drive the ESN using the multivariate time series in z, and estimate the output weights mapping
+	the states of the ESN nodes to the output of the multivariate time series using ridge regression
+	with the penalty parameter chosen by split-half cross-validation.
+
+	NOTE: At present, this assumes that to predict z[t] at time t, the predictor has access to the 
+	*contemporaneous* input input v[t]. If this is not desired, the input must be delayed by one
+	(or more) time units.
+
+	Parameters
+	----------
+	z : numpy.array
+			The multivariate time series, stored in a d x T numpy array.
+	v : numpy.array
+			The *exogenous* input time series.
+	p_opt : float
+			The overall number of lags to use for the multivariate time series.
+	q_opt : float
+			The overall number of lags to use for exogenous input process.
+	N_res : int
+			The number of reservoir nodes in the ESN.
+	rho : float
+			The reservoir matrix W is rescaled to have largest singular
+			value or spectral radius of rho. See renormalize_by.
+	Win_scale : float
+			The amount to scale the input weights, which by default
+			taken to be uniform on [-1, 1].
+	multi_bias : boolean
+			Whether each reservoir node should get its own bias constant, or
+			a single bias constant is used for all reservoir nodes (default).
+	to_plot_regularization : boolean
+			Whether or not to plot the split-half cross-validated mean squared
+			error of the ridge regression as a function of its penalty parameter
+			lambda. This can be useful to ensure that a reasonable value of 
+			lambda is chosen, e.g. one not-too-large or not-too-small.
+	output_verbose : boolean
+			Whether or not to print various progress statements.
+	renormalize_by : str
+			One of {'svd', 'eigen'}, determines whether the 
+			largest singular value (svd) or spectral radius (eigen)
+			of W is rescaled to have value rho. Rescaling the
+			largest singular value to be less than 1 is sufficient
+			to ensure the echo state property, while rescaling the 
+			spectral radius to be less than 1 is necessary when
+			the input process admits the zero sequence.
+
+			NOTE: Generally, taking rho(W) > 1 can be desirable,
+			and this choice tends to depend on the properties of
+			the system being modeled.
+
+	Returns
+	-------
+	z_esn : numpy.array
+			The prediction of the next-step future the multivariate time series.
+	Z : numpy.array
+			The data matrix representation of z used to drive
+			the echo state network, stored as a 
+			d x (T - p_opt) x (p_opt + 1) numpy array.
+	V : numpy.array
+			The data matrix representation of v used to drive
+			the echo state network, stored as a 
+			(T - p_opt) x (p_opt + 1) numpy array.
+	U : numpy.array
+			The states of nodes of the the echo state network.
+			U[i, t] corresponds to the state of the i-th node
+			at the t-th time point.
+	err_esn : numpy.array
+			The error between the next-step future of z and
+			the predicted next-step future of z.
+	Win : numpy.array
+			The input-weight matrix.
+	W : numpy.array
+			The echo state network weight matrix.
+	Wout : numpy.array
+			The weights estimated for the linear regression
+			of the next-step future on the state of the
+			echo state nodes.
+	bias_constant : numpy.array
+			The bias constant matrix.
+
+	Notes
+	-----
+	Any notes go here.
+
+	Examples
+	--------
+	>>> import module_name
+	>>> # Demonstrate code here.
+
+	"""
 
 	#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	#
@@ -935,13 +1121,6 @@ def learn_multvar_io_esn_umd_sparse(z, v, p_opt, q_opt, N_res = 400, rho = 0.99,
 		print("Running ESN with time series as input:")
 
 	for t in range(1, Z.shape[1]):
-		# U[:, t] = numpy.tanh(numpy.dot(Win, numpy.row_stack((Y[:-1, t], X[:-1, t]))) + W.dot(U[:, t-1]) + bias_constant)
-		### DOUBLE CHECK THIS!
-		# import ipdb
-		# ipdb.set_trace()
-
-		### START HERE: Need to stack V at end of ravel-ed Z and go from there:
-
 		io_stacked_vec = numpy.concatenate((Z[:, t, :-1].ravel(), V[t, :]))
 
 		U[:, t] = numpy.tanh(numpy.dot(Win, io_stacked_vec).reshape(-1, 1) + W.dot(U[:, t-1]) + bias_constant)
@@ -953,7 +1132,6 @@ def learn_multvar_io_esn_umd_sparse(z, v, p_opt, q_opt, N_res = 400, rho = 0.99,
 
 	# Using Ridge Regression:
 
-	# target = numpy.row_stack((Y[-1, :], X[-1, :])).T
 	# target should be (T - p_max) x d
 	target = Z[:, :, -1].T
 
